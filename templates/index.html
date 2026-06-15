@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>INDUSTRIAL AMR HMI</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg-dark: #121212; --panel-bg: #1e1e1e; --accent-orange: #ff9800; --terminal-green: #00ff41; --accent-cyan: #00d2ff;}
+        body { background-color: var(--bg-dark); color: #e0e0e0; font-family: 'Segoe UI', sans-serif; }
+        .navbar { background-color: #000 !important; border-bottom: 2px solid var(--accent-orange); }
+        .card { background-color: var(--panel-bg); border: 1px solid #444; border-radius: 4px; margin-bottom: 20px; }
+        .card-header { font-weight: bold; border-bottom: 1px solid #444; background-color: #252525;}
+        .status-val { font-family: 'Roboto Mono', monospace; font-weight: bold; color: var(--terminal-green); background: #000; padding: 2px 6px; border-radius: 3px; }
+        .val-warning { color: var(--accent-orange) !important; }
+        .val-info { color: var(--accent-cyan) !important; }
+        .video-container { position: relative; width: 100%; padding-top: 75%; background: #000; border: 2px solid #555; }
+        .video-feed { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+        .estop-btn { height: 80px; font-size: 24px; font-weight: 900; background: repeating-linear-gradient(45deg, #b71c1c, #b71c1c 10px, #d32f2f 10px, #d32f2f 20px); color: white; border: 3px solid #ff5252; box-shadow: 0 0 15px rgba(255, 0, 0, 0.4); }
+        .joystick-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; max-width: 320px; margin: 0 auto; background: #111; padding: 10px; border-radius: 8px; }
+        .btn-control { height: 60px; background: #333; border: 1px solid #555; color: #ddd; }
+        .btn-control:active { background: var(--accent-orange); color: #000; }
+        #nav-detail { color: var(--accent-orange); background: rgba(255, 152, 0, 0.1); display: block; padding: 8px; text-align: center; border: 1px dashed var(--accent-orange); margin-top: 10px; font-weight: bold; font-family: 'Roboto Mono', monospace;}
+        .sensor-box { background: #0a0a0a; border: 1px solid #333; padding: 8px; border-radius: 4px; margin-bottom: 8px; text-align: center;}
+        .sensor-box span { display: block; font-size: 0.8rem; color: #888; margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+<nav class="navbar navbar-dark mb-4">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="#"><i class="fas fa-industry me-2"></i>AMR CONTROLLER</a>
+        <span class="badge bg-danger rounded-0" id="conn-status">OFFLINE</span>
+    </div>
+</nav>
+
+<div class="container-fluid px-4">
+    <div class="row">
+        <!-- LEFT COLUMN -->
+        <div class="col-lg-7">
+            <!-- CAMERA CARD -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <span><i class="fas fa-camera me-2"></i>VISION SYSTEM</span>
+                    <span id="vision-data" class="status-val">NO DATA</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="video-container">
+                        <img src="/video_feed" class="video-feed" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'100%25\' height=\'100%25\'%3E%3Crect width=\'100%25\' height=\'100%25\' fill=\'%23000\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' fill=\'%23555\' text-anchor=\'middle\' dy=\'.3em\' font-family=\'sans-serif\' font-size=\'20\'%3ECAMERA OFFLINE%3C/text%3E%3C/svg%3E'">
+                    </div>
+                </div>
+                <div class="card-footer d-flex justify-content-between">
+                    <small>CMD: <span id="qr-cmd" style="color:var(--accent-orange); font-weight: bold;">NONE</span></small>
+                    <small>LIDAR: <span id="lidar-dist" style="color:var(--accent-cyan); font-weight: bold;">--</span> cm</small>
+                </div>
+            </div>
+
+            <!-- TELEMETRY & SENSOR FUSION CARD -->
+            <div class="card">
+                <div class="card-header"><i class="fas fa-microchip me-2"></i>TELEMETRY & SENSOR FUSION</div>
+                <div class="card-body">
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6 d-flex justify-content-between border-bottom pb-2"><span>SYS MODE:</span> <span id="sys-mode" class="status-val text-white">--</span></div>
+                        <div class="col-md-6 d-flex justify-content-between border-bottom pb-2"><span>NAV STATE:</span> <span id="nav-mode" class="status-val text-white">--</span></div>
+                    </div>
+                    
+                    <div class="row g-2">
+                        <div class="col-4">
+                            <div class="sensor-box">
+                                <span>IMU YAW</span>
+                                <div id="imu-yaw" class="status-val val-warning">0.00°</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="sensor-box">
+                                <span>TARGET LURUS</span>
+                                <div id="target-yaw" class="status-val val-info">0.00°</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="sensor-box">
+                                <span>ODOMETRI (DIST)</span>
+                                <div id="dist-traveled" class="status-val" style="color: #ff00ff;">0.0 cm</div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="sensor-box">
+                                <span>ENCODER KIRI</span>
+                                <div id="enc-l" class="status-val text-white">0.0 cm</div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="sensor-box">
+                                <span>ENCODER KANAN</span>
+                                <div id="enc-r" class="status-val text-white">0.0 cm</div>
+                            </div>
+                        </div>
+                        <div class="col-12 mt-2">
+                            <div class="sensor-box border-secondary">
+                                <span>QR VISION OFFSET ABSOLUT (CM)</span>
+                                <div id="offset-cm" class="status-val val-info" style="font-size: 1.1rem;">X: 0.0 cm | Y: 0.0 cm</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <span id="nav-detail">STANDBY</span>
+                    <button onclick="connectHardware()" class="btn btn-outline-warning btn-sm w-100 mt-3 rounded-0"><i class="fas fa-plug me-2"></i>RECONNECT HARDWARE</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT COLUMN (CONTROLS) -->
+        <div class="col-lg-5">
+            <button onclick="toggleEstop()" class="btn estop-btn w-100 mb-4 rounded-3"><i class="fas fa-exclamation-triangle me-2"></i>E-STOP</button>
+            
+            <div class="card">
+                <div class="card-header text-center">OPERATION MODE</div>
+                <div class="card-body p-3">
+                    <div class="btn-group w-100">
+                        <button onclick="setMode('MANUAL')" class="btn btn-secondary" id="btn-manual">MANUAL</button>
+                        <button onclick="setMode('AUTO')" class="btn btn-outline-warning" id="btn-auto">AUTO RUN</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header text-center">MANUAL OVERRIDE</div>
+                <div class="card-body">
+                    <div class="joystick-grid">
+                        <div></div> <!-- Kosong Kiri Atas -->
+                        <button id="btn-w" onmousedown="sendMove('LEFT')" onmouseup="stopMove()" onmouseleave="stopMove()" ontouchstart="sendMove('LEFT')" ontouchend="stopMove()" class="btn btn-control"><i class="fas fa-arrow-up"></i></button>
+                        <div></div> <!-- Kosong Kanan Atas -->
+                        
+                        <button id="btn-a" onmousedown="sendMove('BACKWARD')" onmouseup="stopMove()" onmouseleave="stopMove()" ontouchstart="sendMove('BACKWARD')" ontouchend="stopMove()" class="btn btn-control"><i class="fas fa-arrow-left"></i></button>
+                        <button onclick="stopMove()" class="btn btn-danger btn-control"><i class="fas fa-stop"></i></button>
+                        <button id="btn-d" onmousedown="sendMove('FORWARD')" onmouseup="stopMove()" onmouseleave="stopMove()" ontouchstart="sendMove('FORWARD')" ontouchend="stopMove()" class="btn btn-control"><i class="fas fa-arrow-right"></i></button>
+                        
+                        <div></div> <!-- Kosong Kiri Bawah -->
+                        <button id="btn-s" onmousedown="sendMove('RIGHT')" onmouseup="stopMove()" onmouseleave="stopMove()" ontouchstart="sendMove('RIGHT')" ontouchend="stopMove()" class="btn btn-control"><i class="fas fa-arrow-down"></i></button>
+                        <div></div> <!-- Kosong Kanan Bawah -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function connectHardware() { fetch('/api/connect', {method: 'POST'}); }
+    function toggleEstop() { fetch('/api/estop', {method: 'POST'}); }
+    function setMode(mode) { fetch('/api/mode', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({mode: mode})}); }
+    function sendMove(dir) { fetch('/api/manual/move', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({direction: dir})}); }
+    function stopMove() { fetch('/api/manual/stop', {method: 'POST'}); }
+    
+    setInterval(async () => {
+        try {
+            const res = await fetch('/api/status'); 
+            const data = await res.json();
+            
+            // Update Status Utama
+            document.getElementById('conn-status').innerText = data.connected ? "ONLINE" : "OFFLINE";
+            document.getElementById('conn-status').className = data.connected ? "badge bg-success" : "badge bg-danger";
+            document.getElementById('sys-mode').innerText = data.mode;
+            document.getElementById('nav-mode').innerText = data.nav_mode;
+            document.getElementById('nav-detail').innerText = data.nav_status_detail;
+            document.getElementById('qr-cmd').innerText = data.last_cmd;
+            document.getElementById('lidar-dist').innerText = data.lidar_dist_cm; // Sekarang dalam cm
+            
+            // Update Vision
+            const v = data.vision_error;
+            document.getElementById('vision-data').innerText = `PX: X:${v.x} Y:${v.y} A:${v.angle.toFixed(1)}`;
+            document.getElementById('offset-cm').innerText = `X: ${v.x_cm} cm | Y: ${v.y_cm} cm`; // Menampilkan dalam cm
+            
+            // Update Sensor Fusion (Trackless)
+            if (data.trackless) {
+                document.getElementById('imu-yaw').innerText = data.trackless.yaw.toFixed(2) + '°';
+                document.getElementById('target-yaw').innerText = data.trackless.target_yaw.toFixed(2) + '°';
+                document.getElementById('enc-l').innerText = data.trackless.enc_l.toFixed(1) + ' cm';
+                document.getElementById('enc-r').innerText = data.trackless.enc_r.toFixed(1) + ' cm';
+                document.getElementById('dist-traveled').innerText = data.trackless.dist_traveled.toFixed(1) + ' cm';
+            } else {
+                document.getElementById('imu-yaw').innerText = 'OFFLINE';
+                document.getElementById('target-yaw').innerText = 'OFFLINE';
+                document.getElementById('enc-l').innerText = 'OFFLINE';
+                document.getElementById('enc-r').innerText = 'OFFLINE';
+                document.getElementById('dist-traveled').innerText = 'OFFLINE';
+            }
+            
+            // Tombol UI
+            document.getElementById('btn-manual').className = data.mode === 'MANUAL' ? 'btn btn-secondary active' : 'btn btn-outline-secondary';
+            document.getElementById('btn-auto').className = data.mode === 'AUTO' ? 'btn btn-warning active text-dark fw-bold' : 'btn btn-outline-warning';
+            
+        } catch (e) {
+            console.error("Connection to server lost.");
+        }
+    }, 200);
+</script>
+</body>
+</html>

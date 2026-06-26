@@ -1,4 +1,4 @@
-Panduan Sistem Navigasi & HMI Industrial AMR (Autonomous Mobile Robot)
+*Panduan Sistem Navigasi & HMI Industrial AMR (Autonomous Mobile Robot)
 
 Dokumentasi ini menjelaskan arsitektur perangkat lunak, fungsionalitas berkas, mekanisme kontrol, dan panduan operasional untuk sistem kemudi AMR berbasis navigasi QR Code, sensor fusion (IMU + Encoder), serta sistem keamanan LiDAR.
 

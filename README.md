@@ -1,4 +1,4 @@
-# 🤖 Industrial AMR (Autonomous Mobile Robot) - Navigation & HMI System
+# Industrial AMR (Autonomous Mobile Robot) - Navigation & HMI System
 
 Repositori ini berisi sistem navigasi otonom berbasis QR Code, integrasi Sensor Fusion (IMU + Encoder), serta sistem keamanan LiDAR untuk robot industri Autonomous Mobile Robot (AMR). Proyek ini dilengkapi dengan antarmuka HMI (Human-Machine Interface) berbasis web interaktif.
 

@@ -1,241 +1,444 @@
-# 🤖 Industrial AMR (Autonomous Mobile Robot) - Navigation & HMI System
+# 🤖 AMR QR Navigation System
 
-Repositori ini berisi sistem navigasi otonom berbasis QR Code, integrasi Sensor Fusion (IMU + Encoder), serta sistem keamanan LiDAR untuk robot industri Autonomous Mobile Robot (AMR). Proyek ini dilengkapi dengan antarmuka HMI (Human-Machine Interface) berbasis web interaktif.
+> **Autonomous Mobile Robot** berbasis navigasi QR Code dengan sensor fusion IMU + Encoder, safety lidar SICK, dan web dashboard Flask.
 
-# 📌 Daftar Isi
+---
 
-- 🏗️ Arsitektur Sistem & Aliran Data
+## 📋 Daftar Isi
 
-- 📁 Struktur Direktori Proyek
+- [Arsitektur Sistem](#-arsitektur-sistem)
+- [Deskripsi File](#-deskripsi-file)
+  - [amr_controller.py](#1-amr_controllerpy--otak-utama-amr)
+  - [amr_qr_nav.py](#2-amr_qr_navpy--sistem-visi-qr)
+  - [trackless_module.py](#3-trackless_modulepy--sensor-fusion-imu--encoder)
+  - [app.py](#4-apppy--web-dashboard-flask)
+  - [encoder_idset.py](#5-encoder_idsetpy--utilitas-konfigurasi-encoder)
+  - [index.html](#6-indexhtml--tampilan-hmi-dashboard)
+  - [Encoder_.eds](#7-encoder_eds--definisi-objek-canopen)
+- [Alur Navigasi Otomatis](#-alur-navigasi-otomatis)
+- [Topologi Jaringan & Hardware](#-topologi-jaringan--hardware)
+- [Dependensi](#-dependensi)
+- [Cara Menjalankan](#-cara-menjalankan)
+
+---
+
+## 🏗 Arsitektur Sistem
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                      app.py (Flask HMI)                 │
+│          Web Dashboard  ←→  AMRController               │
+└────────────────────────┬────────────────────────────────┘
+                         │
+          ┌──────────────▼──────────────┐
+          │       amr_controller.py      │
+          │  ┌──────────┐ ┌───────────┐ │
+          │  │ IntegratedQRSystem      │ │
+          │  │ (amr_qr_nav.py bridge)  │ │
+          │  └────┬─────┘ └─────┬─────┘ │
+          │       │ Vision       │ MQTT  │
+          │  ┌────▼─────┐ ┌─────▼─────┐ │
+          │  │ Kamera   │ │ Lidar ROS │ │
+          │  │ USB/CV2  │ │ SICK Nano │ │
+          │  └──────────┘ └───────────┘ │
+          │  ┌──────────────────────────┐│
+          │  │   trackless_module.py    ││
+          │  │  IMU Serial + 2x Encoder ││
+          │  │  (CAN via ttyACM0)       ││
+          │  └──────────────────────────┘│
+          └──────────────────────────────┘
+```
 
-- 📂 Penjelasan Berkas & Komponen
+---
 
-- ⚙️ Mekanisme Kontrol Navigasi
+## 📂 Deskripsi File
+
+---
+
+### 1. `amr_controller.py` — Otak Utama AMR
+
+> File terbesar dan terpenting. Mengintegrasikan semua subsistem: visi, motor, lidar, encoder, IMU, dan komunikasi MQTT.
 
-        A. Logika Penyelarasan (Alignment)
+#### 🔧 Kelas-kelas di dalamnya
 
-        B. Kontrol Jalur S-Curve Lintasan
+| Kelas | Peran |
+|---|---|
+| `IntegratedQRSystem` | Bridge antara visi QR dan kontrol motor |
+| `LidarSafetyMonitor` | Safety layer berbasis ROS + SICK lidar |
+| `AMRController` | Kontroler utama: state machine, motor, navigasi |
 
-- 🛡️ Sistem Keselamatan LiDAR (SICK Nano)
+---
 
-- 💻 Spesifikasi HMI & Web Dashboard
+#### 🔹 `IntegratedQRSystem`
 
-- 🚀 Panduan Instalasi & Cara Menjalankan
+Kelas ini mewarisi `QRNavigationSystem` (dari `amr_qr_nav.py`) dan mengimplementasikan `control_logic()` — fungsi yang dipanggil setiap frame kamera.
 
-# 🏗️ Arsitektur Sistem & Aliran Data
+**Prioritas Alignment (berurutan):**
 
-Sistem AMR ini mengintegrasikan pemrosesan citra komputer (Computer Vision), kendali PID pergerakan motor diferensial, pembacaan umpan balik odometri (Trackless/CANopen Encoder), serta sistem keselamatan LiDAR berbasis ROS.
+1. **Y-axis** — AMR mundur/maju hingga QR berada di tengah vertikal frame (`deadzone_y = 25px`)
+2. **Sudut besar > 30°** → `ALIGN_LARGE_ROTATION`: rotasi penuh dengan target dinamis
+3. **Sudut kecil < 30°** → `ALIGN_ROTATION`: pulse halus (gerak-berhenti)
+4. **Semua aligned** → tunggu stabil 1 detik → eksekusi perintah QR
 
-       [ Kamera USB ] -> Deteksi QR (amr_qr_nav.py)
-              |
-              v (Kalkulasi error X, Y, Sudut)
-      [ app.py (Flask) ] <======== API (Web HTTP/MJPEG) ========> [ HMI Dashboard (index.html) ]
-              |                                                               ^
-              v (State & Command)                                             |
-     [ amr_controller.py ] <================== telemetry =====================+
-       /      |      \
-      /       |       \
-     v        v        v
- [Motor]   [LiDAR]   [Trackless (IMU + Encoder)]
-(Analog)   (ROS)     (CAN / Serial)
+**Anti-Osilasi:** Jika AMR bolak-balik alignment > 10 kali, langsung eksekusi tanpa menunggu.
 
+---
 
-# 📁 Struktur Direktori Proyek
+#### 🔹 `LidarSafetyMonitor`
 
-Agar aplikasi Flask dan pengontrol dapat berjalan dengan lancar, pastikan struktur berkas di dalam repositori Anda disusun seperti berikut:
+Subscribe ke topik ROS `/sick_safetyscanners/scan` dan memantau zona depan AMR.
 
-amr-navigation-system/
-├── templates/
-│   └── index.html         # Tampilan HMI Dashboard (Frontend)
-├── Encoder_.eds           # Electronic Data Sheet CANopen untuk Encoder
-├── README.md              # Dokumentasi Proyek
-├── amr_controller.py      # Otak Utama & Integrasi Kontrol AMR
-├── amr_qr_nav.py          # Modul Pengolahan Citra & Deteksi QR
-├── app.py                 # Flask Web Server & API Gateway
-└── encoder_idset.py       # Utilitas Konfigurasi ID Encoder CANopen
+| Parameter | Nilai |
+|---|---|
+| Zona pantau | -30° s/d +30° (depan AMR) |
+| Jarak STOP | < 0.6 m → motor berhenti penuh |
+| Jarak SLOW | < 1.0 m → kecepatan 50% |
+| Filter noise | Hanya range valid 0.15 – 10.0 m |
 
+---
 
-# 📂 Penjelasan Berkas & Komponen
+#### 🔹 `AMRController`
 
-1. amr_controller.py (Otak Utama AMR)
+State machine utama dengan `nav_mode` sebagai penentu perilaku:
+
+```
+IDLE
+ ├─► QR_SEARCH_ROTATION   (timeout QR > 3 detik → rotasi cari QR)
+ ├─► ALIGN_Y              (koreksi posisi maju-mundur)
+ ├─► ALIGN_ROTATION       (koreksi sudut kecil, pulse)
+ ├─► ALIGN_LARGE_ROTATION (rotasi penuh > 30°)
+ ├─► POST_ROT_CREEP       (creep setelah rotasi besar)
+ ├─► WAITING_STABLE       (tunggu 1 detik sebelum eksekusi)
+ ├─► EXECUTE_MOVE         (gerakan MAJU/MUNDUR dengan S-Curve PID)
+ ├─► EXECUTE_ROTATION_90  (rotasi 90° berbasis IMU)
+ └─► GOAL_REACHED         (berhenti di titik tujuan)
+```
+
+**Fitur Motor Control:**
+- Kontrol arah via Digital I/O (CK5162E) dan kecepatan via Analog Output (CKDA08ETH)
+- Trim otomatis kiri/kanan: `TRIM_L_AUTO = 0.96`, `TRIM_R_AUTO = 1.00`
+- S-Curve acceleration pada fase `EXECUTE_MOVE`
+- Dual PID: IMU (`KP=0.22, KI=0.01, KD=0.80`) + Encoder (`KP_ENC=0.06`)
+- Stall guard: kecepatan < `V_STALL` dibulatkan ke `V_STALL` atau 0
+
+**Input Fisik:**
+| Pin | Fungsi |
+|---|---|
+| DI0 | Emergency Stop (NC — aktif saat LOW) |
+| DI1 | Tombol START AUTO (rising edge) |
+| DI2 | Tombol STOP AUTO / kembali MANUAL (rising edge) |
+
+**MQTT Commands** (broker `192.168.3.100`):
 
-Bertindak sebagai Main Controller yang mengatur logika navigasi otonom dan manual, state machine robot, serta antarmuka dengan modul perangkat keras fisik.
-
-- Fungsi Utama:
-
-  - Menginisialisasi Node ROS (amr_controller) untuk berlangganan data sensor LiDAR SICK.
-
-  - Menjalankan thread kamera latar belakang (start_camera_thread) yang mengaktifkan sistem visi.
-
-  - Menghubungkan driver I/O Digital (CK5162E) dan Analog DAC (CKDA08ETH) untuk menggerakkan roda motor BLDC 400W secara diferensial.
-
-  - Memproses tombol fisik industri (E-Stop pada DI0, Start Auto pada DI1, Stop Auto pada DI2) dengan algoritma debouncing.
-
-  - Mendukung kendali jarak jauh via protokol broker MQTT untuk integrasi dengan Warehouse Management System (WMS).
-
-2. amr_qr_nav.py (Sistem Visi Kamera & Deteksi QR)
-
-Modul ini menangani pemrosesan citra dari kamera bawah yang mengarah ke lantai untuk mencari markah jalan berupa QR Code.
-
-- Fungsi Utama:
-
-  - Menggunakan OpenCV (cv2.QRCodeDetector) untuk menangkap frame kamera dan mendekode isi QR Code.
-
-  - Menghitung orientasi rotasi (kemiringan sudut) QR Code terhadap sumbu kamera dengan mencari vektor dari tengah-bawah ke tengah-atas QR:
-
-$$\theta_{\text{rotasi}} = \text{atan2}(dx, dy)$$
-
-Metode ini sangat toleran terhadap distorsi perspektif kemiringan fisik kamera (camera tilt perspective).
-
-Menyediakan visualisasi overlay (menggambar kotak batas QR, sumbu koordinat, arah hadap QR) sebelum mengirim data penyimpangan ($e_x$, $e_y$, dan $\theta$) ke pengendali utama.
-
-3. app.py (Web Server & API Gateway)
-
-Aplikasi berbasis Flask yang menjembatani kontrol internal robot dengan antarmuka pengguna (HMI).
-
-- Fungsi Utama:
-
-  - Monkey Patching: Melakukan modifikasi dinamis pada metode IntegratedQRSystem.process_stream agar frame kamera yang sedang diproses oleh detektor QR dapat disalurkan secara simultan ke web browser dalam format MJPEG Stream (/video_feed).
-
-  - Menyediakan API RESTful untuk memantau status telemetri robot secara real-time (/api/status), memicu koneksi hardware (/api/connect), memicu E-stop soft (/api/estop), mengubah mode kerja (/api/mode), dan mengontrol pergerakan manual (/api/manual/move & /api/manual/stop).
-
-4. templates/index.html (HMI Dashboard Web)
-
-Halaman depan (Front-end) web dashboard modern berbasis Bootstrap 5 dan Font Awesome dengan gaya bertema gelap (dark mode) yang dioptimalkan untuk layar tablet industri / IPC (Industrial PC) pada bodi AMR.
-
-- Fungsi Utama:
-
-  - Menampilkan video feed real-time dengan overlay hasil deteksi QR.
-
-  - Menyajikan widget visualisasi status kritis: E-Stop State, Mode Navigasi, Jarak LiDAR SICK, Posisi Odometri (Encoder Kiri/Kanan), IMU Yaw, dan nilai deviasi sumbu QR ($X$ & $Y$ dalam satuan cm).
-
-  - Menyediakan panel kontrol manual berupa digital virtual joystick yang mendukung event sentuh (touch events) untuk pengoperasian langsung di lapangan.
-
-5. encoder_idset.py (Utilitas Konfigurasi ID Encoder)
-
-Skrip bantu mandiri yang digunakan saat proses komisioning awal atau perawatan hardware encoder roda.
-
-- Fungsi Utama:
-
-  - Berkomunikasi via protokol CANopen menggunakan library canopen melalui adapter USB-to-CAN SLCAN (/dev/ttyACM0).
-
-  - Memindahkan Node ID Encoder dari ID default pabrik (Node 1) ke Node ID target (Node 2) agar tidak bentrok pada jaringan bus CAN robot.
-
-  - Menyimpan perubahan konfigurasi ke dalam EEPROM internal encoder secara permanen dengan mengirimkan tanda khusus save (0x65766173) pada indeks Object Dictionary 0x1010:01.
-
-6. Encoder_.eds (Electronic Data Sheet CANopen)
-
-Berkas konfigurasi standar yang mendeskripsikan struktur Object Dictionary dari encoder roda CANopen (seri AM50).
-
-- Fungsi Utama:
-
-  - Digunakan oleh encoder_idset.py dan kelas TracklessSystem untuk memetakan alamat memori internal encoder, seperti pembacaan posisi nilai encoder (0x6004), konfigurasi baudrate (0x2003), dan pengaturan Node ID (0x2004).
-
-# ⚙️ Mekanisme Kontrol Navigasi & Sensor Fusion
-
-## A. Logika Penyelarasan (Alignment)
-
-Saat robot mendekati QR Code baru, ia akan melakukan beberapa tahapan penyelarasan posisi sebelum mengeksekusi instruksi pergerakan selanjutnya:
-
-1. Koreksi Geser Samping (Sumbu Y): Jika error $y$ di luar batas toleransi deadzone_y ($25\text{ px}$), AMR akan masuk ke mode ALIGN_Y menggunakan sistem pergerakan pulsa (pulse-move) demi menghindari slip pada roda.
-
-2. Koreksi Rotasi Kasar (Sudut Ekstrem > 30°): Jika sudut kemiringan $\theta > 30^\circ$, robot akan mengeksekusi rotasi cepat searah jarum jam atau berlawanan arah lewat mode ALIGN_LARGE_ROTATION. Target sudut ditentukan secara dinamis menggunakan rumus:
-
-$$\theta_{\text{target}} = \text{clamp}(|\theta| - 10^\circ, \, \text{min}=30^\circ, \, \text{max}=170^\circ)$$
-
-3. Koreksi Rotasi Halus (Sudut Kecil < 30°): Robot bergerak presisi dalam mode ALIGN_ROTATION secara perlahan agar sumbu hadap lurus tegak terhadap marka lantai.
-
-4. Proteksi Anti-Osilasi: Jika robot terdeteksi berosilasi bolak-balik melewati batas deadzone lebih dari 10 kali (OSCILLATION_MAX), sistem akan secara otomatis melompati fase alignment dan langsung mengeksekusi perintah gerak berikutnya untuk efisiensi waktu kerja.
-
-## B. Kontrol Jalur S-Curve Lintasan (EXECUTE_MOVE)
-
-Saat bergerak maju antar-QR, robot menggunakan S-Curve lateral correction berbasis Sensor Fusion untuk memastikan gerakan berjalan lurus secara presisi:
-
-- Deviasi posisi awal sumbu $X$ dari QR diubah menjadi parameter offset awal lintasan ($scurve\_offset\_cm$).
-
-- Target sudut dinamis ($\theta_{\text{target}}$) dikalkulasi sepanjang jarak tempuh ($x$) menggunakan turunan pertama kurva polinomial:
-
-$$y'(x) = \frac{6 \cdot \text{offset}}{\text{active\_dist}} \left( \frac{x}{\text{active\_dist}} - \left(\frac{x}{\text{active\_dist}}\right)^2 \right)$$
-
-$$\theta_{\text{target}}(x) = \arctan(y'(x))$$
-
-- Deviasi aktual didapatkan dari gabungan sensor IMU Yaw dan selisih pembacaan Encoder roda kiri-kanan:
-
-$$u(t) = K_{p} \cdot e_{\theta}(t) + K_{i} \cdot \int e_{\theta}(t)\,dt + K_{d} \cdot \frac{de_{\theta}(t)}{dt} + K_{p\_enc} \cdot e_{\text{encoder}}(t)$$
-
-- Sinyal koreksi kontrol $u(t)$ diumpankan balik untuk membedakan voltase kecepatan motor kiri dan motor kanan.
-
-# 🛡️ Sistem Keselamatan LiDAR (SICK Nano)
-
-AMR dilengkapi dengan sensor keselamatan laser scanner LiDAR SICK yang terintegrasi melalui ROS (Robot Operating System) pada topik /sick_safetyscanners/scan.
-
-- Zona Pantau Depan: Dibatasi ketat pada sudut depan $-30^\circ$ hingga $+30^\circ$ untuk memfokuskan deteksi halangan tepat di jalur lintasan robot.
-
-- Filter Noise Validasi: Mengabaikan objek di bawah $0.15\text{ m}$ untuk membuang anomali pantulan piringan logam robot sendiri (SICK laser artifact reflection).
-
-- Skema Respons Jarak:
-
-  - Zona Aman ($d > 1.0\text{ m}$): Kecepatan motor berjalan normal 100%.
-
-  - Zona Peringatan ($0.6\text{ m} \le d \le 1.0\text{ m}$): Robot memasuki status SLOW, kecepatan putaran motor diredam sebesar 50% dari kecepatan jelajah.
-
-  - Zona Bahaya ($d < 0.6\text{ m}$): Robot memasuki status STOP, rem elektromagnetik aktif secara instan untuk menghentikan laju robot demi menghindari tabrakan fisik.
-
-# 💻 Spesifikasi HMI & Web Dashboard
-
-HMI web dirancang agar mudah digunakan oleh operator pabrik langsung di lapangan:
-
-<img width="673" height="417" alt="image" src="https://github.com/user-attachments/assets/3dd48319-c61f-4b06-81ac-043f04d2d006" />
-
-# 🚀 Panduan Instalasi & Cara Menjalankan
-
-## A. Prasyarat Sistem & Dependensi
-
-Sistem operasi yang direkomendasikan adalah Linux Ubuntu 20.04 LTS dengan ROS Noetic.
-
-Instal pustaka Python yang diperlukan:
-
-# Update package list
-        sudo apt update
-
-# Instal dependensi Python utama
-        pip3 install flask opencv-python numpy paho-mqtt python-canopen
-
-# Berikan hak akses untuk port hardware serial & USB-to-CAN
-        sudo chmod 666 /dev/ttyACM0
-        sudo chmod 666 /dev/ttyUSB0
-
-
-## B. Langkah Menjalankan Aplikasi
-
-1. Jalankan ROS Core dan Driver LiDAR SICK (jika menggunakan LiDAR fisik):
-
-        roscore
-# (Gunakan terminal terpisah untuk menjalankan driver sick_safetyscanners)
-
-
-2. Jalankan Aplikasi Web Server HMI & Kontroler Utama:
-3. Jalankan file app.py yang secara otomatis akan menginisialisasi sistem kontrol utama AMRController:
-
-        sudo python3 app.py
-
-
-Server web Flask akan mulai berjalan pada alamat http://0.0.0.0:5050.
-
-Akses Dashboard Pengguna:
-Buka peramban web (Google Chrome / Mozilla Firefox) di tablet HMI atau laptop yang terhubung dalam satu jaringan Wi-Fi AMR, lalu akses alamat IP robot:
-
-        http://<IP_ROBOT_AMR>:5050
-
-
-4. Operasional:
-
-Klik tombol RECONNECT HARDWARE di bagian bawah telemetry panel untuk menyinkronkan koneksi DAC dan I/O controller.
-
-Gunakan tombol MANUAL untuk menguji pergerakan roda dengan tombol arah virtual.
-
-Tekan tombol AUTO RUN untuk memindahkan robot ke mode otonom agar mengikuti markah jalan QR Code di lantai pabrik.
-
-[!IMPORTANT]
-
-Selalu pastikan area depan AMR bebas dari halangan fisik saat pertama kali mengaktifkan AUTO RUN. Gunakan tombol E-STOP fisik atau tombol darurat pada Web Dashboard apabila terjadi deviasi pergerakan yang membahayakan.
+| Pesan | Aksi |
+|---|---|
+| `START_AUTO` | Aktifkan mode AUTO |
+| `RETURN_HOME` | Cari QR HOMEPOST dan berhenti |
+| `STOP_AUTO` / `STOP` | Kembali ke MANUAL |
+| `W/A/S/D` | Manual control via MQTT |
+
+**Logging:** Setiap gerakan EXECUTE_MOVE menghasilkan file `amr_diagnostic_log.csv` dengan kolom: `Time, Status, Dist_X, Offset_Awal_Y, Target_Yaw_SCurve, IMU_Yaw, Enc_L, Enc_R, Enc_Yaw, PID_Corr, Int_Err`.
+
+---
+
+### 2. `amr_qr_nav.py` — Sistem Visi QR
+
+> Kelas dasar untuk pembacaan dan interpretasi QR Code dari kamera USB. Berdiri sendiri dan dapat diuji secara independen.
+
+#### Fitur Utama
+
+- **Inisialisasi kamera:** OpenCV `V4L2` pada resolusi 640×480, buffer size 1 (mengurangi lag)
+- **Deteksi multi-QR:** `cv2.QRCodeDetector().detectAndDecodeMulti()` — semua QR dalam frame diproses bersamaan
+- **Kalkulasi orientasi yang akurat:**
+  ```
+  Vektor dari titik tengah sisi bawah → sisi atas QR
+  angle = atan2(dx, dy) dalam derajat
+  ```
+  Metode ini tahan terhadap distorsi perspektif kamera miring dibanding metode corner langsung.
+
+- **Parsing perintah QR:** Format `CMD:VALUE` (contoh: `MAJU:300`, `GOAL:5`) atau hanya `CMD`
+
+- **Blind zone saat meninggalkan QR:** Setelah eksekusi perintah MAJU/MUNDUR, sistem mengabaikan frame selama `blind_duration = 3.0 detik` agar tidak membaca QR yang sedang ditinggalkan.
+
+- **Visualisasi overlay:** Outline QR, garis arah atas, crosshair, label error/angle ditampilkan live di window OpenCV.
+
+#### Format Data QR yang Didukung
+
+| Format QR | Contoh | Aksi |
+|---|---|---|
+| `MAJU` / `MUNDUR` | `MAJU` | Gerak linear |
+| `GOAL:N` | `GOAL:3` | Berhenti di goal N |
+| `PUTAR_KANAN` / `PUTAR_KIRI` | `PUTAR_KANAN` | Rotasi 90° |
+| `HOMEPOST` | `HOMEPOST` | Penanda titik asal |
+
+---
+
+### 3. `trackless_module.py` — Sensor Fusion IMU + Encoder
+
+> Modul odometri tanpa jalur fisik (trackless). Menggabungkan IMU serial dan 2 encoder CANopen untuk estimasi posisi dan koreksi lintasan.
+
+#### Konfigurasi Hardware
+
+| Parameter | Nilai |
+|---|---|
+| Diameter roda utama | 18.0 cm |
+| Jarak antar roda (track width) | 37.7 cm |
+| Resolusi encoder | 8192 PPR |
+| Rasio gearbox (mekanis) | 1:1 (direct axis) |
+| IMU port | `/dev/ttyUSB0`, 9600 baud |
+| CAN adapter | `/dev/ttyACM0`, 125 kbps (SLCAN) |
+| Node encoder kiri | CAN ID 1 |
+| Node encoder kanan | CAN ID 2 |
+
+#### Cara Kerja Sensor Fusion
+
+```
+IMU Yaw (absolut, 40% bobot)
+        +
+Encoder Differential (relatif, 60% bobot)
+        ↓
+    Fused Error
+        ↓
+   PID Controller
+        ↓
+  Correction Signal → set_motor()
+```
+
+**Kinematika diferensial:**
+```
+delta_L/R = (raw - offset) / PPR * keliling_roda
+yaw_enc   = atan((dist_L - dist_R) / track_width)
+```
+
+#### Thread
+
+| Thread | Fungsi |
+|---|---|
+| `_imu_thread` | Membaca byte serial dari IMU (protokol WIT), parse paket 11 byte, update `yaw_val` |
+| `_encoder_thread` | Poll SDO CANopen index `0x6004` (posisi absolut) dari 2 node encoder @ 100Hz |
+
+---
+
+### 4. `app.py` — Web Dashboard Flask
+
+> Server web yang menyajikan HMI (Human Machine Interface) berbasis browser. Menjalankan `AMRController` di background dan meneruskan live video + status ke browser.
+
+#### Fitur
+
+- **Live video stream** via MJPEG (`/video_feed`) — frame diambil dari `IntegratedQRSystem` via global buffer thread-safe
+- **Monkey-patch** `process_stream`: menggantikan fungsi bawaan `QRNavigationSystem` dengan versi yang menulis ke `global_last_frame` agar bisa diakses Flask
+- **REST API endpoints:**
+
+| Endpoint | Method | Fungsi |
+|---|---|---|
+| `/` | GET | Halaman utama HMI |
+| `/video_feed` | GET | MJPEG stream kamera |
+| `/api/status` | GET | Status lengkap AMR (JSON) |
+| `/api/connect` | POST | Hubungkan hardware |
+| `/api/estop` | POST | Toggle E-Stop |
+| `/api/mode` | POST | Ganti mode MANUAL/AUTO |
+| `/api/manual/move` | POST | Gerak manual (arah) |
+| `/api/manual/stop` | POST | Hentikan motor |
+
+#### Payload `/api/status` (ringkasan)
+
+```json
+{
+  "connected": true,
+  "mode": "AUTO",
+  "nav_mode": "EXECUTE_MOVE",
+  "nav_status_detail": "S-CRV | Ty:0.5° | Y:0.3° | C:1.2",
+  "estop": false,
+  "lidar": { "dist_cm": 85.0, "is_stop": false, "is_slow": false, "active_rays": 12 },
+  "vision_error": { "x": -5, "y": 3, "angle": 0.8, "x_cm": -0.5, "y_cm": 0.3 },
+  "trackless": { "enc_l": 12.5, "enc_r": 12.4, "yaw": 0.2, "dist_traveled": 12.45 }
+}
+```
+
+#### Startup Sequence
+
+1. Buat instance `AMRController`
+2. Pasang signal handler `SIGINT`/`SIGTERM` untuk graceful shutdown
+3. Jalankan `rospy.spin()` di background thread (untuk callback lidar)
+4. Jalankan Flask di `host=0.0.0.0, port=5050`
+
+---
+
+### 5. `encoder_idset.py` — Utilitas Konfigurasi Encoder
+
+> Script satu-kali-jalan untuk mengubah Node ID encoder baru dari ID default pabrik (1) ke ID yang diinginkan (2) via CANopen SDO.
+
+#### Prosedur
+
+```
+Connect SLCAN (/dev/ttyACM0, 125kbps)
+    ↓
+Add node ID 1 + load EDS
+    ↓
+Set state PRE-OPERATIONAL
+    ↓
+SDO write 0x3000:0 = Node ID baru (coba 1 byte, fallback 4 byte)
+    ↓
+SDO write 0x1010:1 = 0x65766173 ("save" → EEPROM)
+    ↓
+NMT Reset All (0x81)
+    ↓
+Power cycle encoder
+```
+
+> ⚠️ **Jalankan hanya sekali** per encoder. Setelah ID berubah, gunakan `trackless_module.py` untuk komunikasi rutin.
+
+> 💡 Jika muncul `Permission Denied`: jalankan `sudo chmod 666 /dev/ttyACM0`
+
+---
+
+### 6. `index.html` — Tampilan HMI Dashboard
+
+> Single-page dashboard yang berkomunikasi dengan `app.py` via fetch API. Auto-refresh status setiap 200ms.
+
+#### Panel yang Tersedia
+
+| Panel | Konten |
+|---|---|
+| **Video Feed** | Live stream kamera dengan overlay QR |
+| **Mode Control** | Toggle MANUAL / AUTO, tombol E-Stop |
+| **Manual Control** | Tombol arah (W/A/S/D) untuk gerak manual |
+| **Navigation Status** | `nav_mode` dan `nav_status_detail` real-time |
+| **Vision Error** | Error X/Y (pixel & cm), sudut QR |
+| **Lidar Safety** | Jarak minimum, status STOP/SLOW, jumlah ray aktif |
+| **Encoder/Odometry** | Jarak tempuh L/R, yaw IMU, jarak total |
+
+---
+
+### 7. `Encoder_.eds` — Definisi Objek CANopen
+
+> File EDS (Electronic Data Sheet) standar CANopen untuk encoder rotary. Digunakan oleh library `canopen` Python untuk mengetahui struktur Object Dictionary encoder.
+
+**Index kunci yang digunakan sistem:**
+
+| Index | Sub | Fungsi |
+|---|---|---|
+| `0x6004` | 0 | Posisi absolut encoder (dibaca setiap 10ms) |
+| `0x3000` | 0 | Node ID (ditulis saat setup via `encoder_idset.py`) |
+| `0x1010` | 1 | Save ke EEPROM (`"save"` = `0x65766173`) |
+
+---
+
+## 🔄 Alur Navigasi Otomatis
+
+```
+[START AUTO]
+     │
+     ▼
+  IDLE ──────────────────── QR tidak terdeteksi > 3 detik
+     │                              │
+     │ QR terdeteksi                ▼
+     ▼                    QR_SEARCH_ROTATION
+  Hitung error                     │
+  (X, Y, angle)            QR ketemu? ──► IDLE
+     │
+     ├─► Y tidak aligned? ──► ALIGN_Y (maju/mundur)
+     │
+     ├─► |angle| > 30°? ──► ALIGN_LARGE_ROTATION ──► POST_ROT_CREEP
+     │
+     ├─► |angle| > 2°? ──► ALIGN_ROTATION (pulse)
+     │
+     └─► Semua aligned ──► WAITING_STABLE (1 detik)
+                               │
+                               ▼
+                         EXECUTE_MOVE / EXECUTE_ROTATION_90
+                               │
+                         [Encoder: jarak tercapai atau timeout]
+                               │
+                               ▼
+                         Cari QR berikutnya → IDLE
+                               │
+                          [QR = GOAL:N]
+                               │
+                               ▼
+                         GOAL_REACHED → Tunggu START AUTO
+```
+
+---
+
+## 🌐 Topologi Jaringan & Hardware
+
+```
+[PC/Tablet Browser]
+        │  HTTP :5050
+        ▼
+[Raspberry Pi / Jetson]
+   ├── Flask app.py
+   ├── amr_controller.py
+   ├── rospy (ROS1)
+   │
+   ├── /dev/video0  ──── USB Camera
+   ├── /dev/ttyUSB0 ──── IMU Serial (WIT protocol)
+   ├── /dev/ttyACM0 ──── CAN Adapter (SLCAN)
+   │                      ├── Encoder Kiri  (CAN ID 1)
+   │                      └── Encoder Kanan (CAN ID 2)
+   │
+   ├── 192.168.1.30 ──── CKDA08ETH (Analog Output 0-5V)
+   ├── 192.168.2.30 ──── CK5162E   (Digital I/O)
+   └── 192.168.3.100 ─── MQTT Broker
+
+[ROS] /sick_safetyscanners/scan ← SICK nanoScan3 Safety Lidar
+```
+
+---
+
+## 📦 Dependensi
+
+```
+# Python packages
+opencv-python        # Deteksi QR, capture kamera
+numpy                # Kalkulasi array
+flask                # Web server HMI
+paho-mqtt            # Komunikasi MQTT
+canopen              # Komunikasi encoder via CAN
+pyserial             # Komunikasi IMU serial
+rospy                # ROS1 (untuk lidar SICK)
+sensor_msgs          # ROS message type LaserScan
+
+# Custom modules (tidak termasuk di repo ini)
+analog_digital       # Driver CK5162E & CKDA08ETH (Ethernet I/O)
+```
+
+---
+
+## ▶️ Cara Menjalankan
+
+### Mode Standalone (visi saja, tanpa hardware)
+```bash
+python3 amr_qr_nav.py
+```
+
+### Mode Controller penuh (terminal keyboard)
+```bash
+python3 amr_controller.py
+# W/A/S/D → gerak manual | Space → stop | Q / Ctrl+C → keluar
+```
+
+### Mode Web Dashboard (HMI)
+```bash
+# Pastikan roscore dan driver lidar sudah berjalan
+roscore &
+roslaunch sick_safetyscanners sick_safetyscanners.launch &
+
+# Jalankan Flask
+python3 app.py
+# Buka browser: http://<IP_ROBOT>:5050
+```
+
+### Setup encoder baru (satu kali)
+```bash
+python3 encoder_idset.py
+# Pastikan hanya 1 encoder terhubung saat menjalankan ini
+```
+
+---
+
+> 📌 **Catatan:** Seluruh sistem dirancang untuk berjalan di Linux (Ubuntu/Raspbian). Pastikan user memiliki akses ke `/dev/ttyUSB0` dan `/dev/ttyACM0`:
+> ```bash
+> sudo usermod -aG dialout $USER
+> ```

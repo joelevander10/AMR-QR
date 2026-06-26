@@ -236,28 +236,28 @@ Sistem operasi yang direkomendasikan adalah Linux Ubuntu 20.04 LTS dengan ROS No
 Instal pustaka Python yang diperlukan:
 
 # Update package list
-sudo apt update
+        sudo apt update
 
 # Instal dependensi Python utama
-pip3 install flask opencv-python numpy paho-mqtt python-canopen
+        pip3 install flask opencv-python numpy paho-mqtt python-canopen
 
 # Berikan hak akses untuk port hardware serial & USB-to-CAN
-sudo chmod 666 /dev/ttyACM0
-sudo chmod 666 /dev/ttyUSB0
+        sudo chmod 666 /dev/ttyACM0
+        sudo chmod 666 /dev/ttyUSB0
 
 
 ## B. Langkah Menjalankan Aplikasi
 
 1. Jalankan ROS Core dan Driver LiDAR SICK (jika menggunakan LiDAR fisik):
 
-roscore
+        roscore
 # (Gunakan terminal terpisah untuk menjalankan driver sick_safetyscanners)
 
 
 2. Jalankan Aplikasi Web Server HMI & Kontroler Utama:
 3. Jalankan file app.py yang secara otomatis akan menginisialisasi sistem kontrol utama AMRController:
 
-sudo python3 app.py
+        sudo python3 app.py
 
 
 Server web Flask akan mulai berjalan pada alamat http://0.0.0.0:5050.
@@ -265,7 +265,7 @@ Server web Flask akan mulai berjalan pada alamat http://0.0.0.0:5050.
 Akses Dashboard Pengguna:
 Buka peramban web (Google Chrome / Mozilla Firefox) di tablet HMI atau laptop yang terhubung dalam satu jaringan Wi-Fi AMR, lalu akses alamat IP robot:
 
-http://<IP_ROBOT_AMR>:5050
+        http://<IP_ROBOT_AMR>:5050
 
 
 4. Operasional:

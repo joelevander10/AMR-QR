@@ -12,9 +12,9 @@ Repositori ini berisi sistem navigasi otonom berbasis QR Code, integrasi Sensor 
 
 - ⚙️ Mekanisme Kontrol Navigasi
 
-    A. Logika Penyelarasan (Alignment)
+        A. Logika Penyelarasan (Alignment)
 
-    B. Kontrol Jalur S-Curve Lintasan
+        B. Kontrol Jalur S-Curve Lintasan
 
 - 🛡️ Sistem Keselamatan LiDAR (SICK Nano)
 
@@ -81,13 +81,11 @@ Fungsi Utama:
 
 Menggunakan OpenCV (cv2.QRCodeDetector) untuk menangkap frame kamera dan mendekode isi QR Code.
 
-Menghitung orientasi rotasi (kemiringan sudut) QR Code terhadap sumbu kamera dengan algoritma proyeksi vektor:
-
+Menghitung orientasi rotasi (kemiringan sudut) QR Code terhadap sumbu kamera dengan mencari vektor dari tengah-bawah ke tengah-atas QR:
 
 $$\theta_{\text{rotasi}} = \text{atan2}(dx, dy)$$
 
-
-Vektor dihitung dari titik tengah bawah QR ke titik tengah atas QR, sehingga sangat toleran terhadap distorsi kemiringan fisik kamera (camera tilt perspective).
+Metode ini sangat toleran terhadap distorsi perspektif kemiringan fisik kamera (camera tilt perspective).
 
 Menyediakan visualisasi overlay (menggambar kotak batas QR, sumbu koordinat, arah hadap QR) sebelum mengirim data penyimpangan ($e_x$, $e_y$, dan $\theta$) ke pengendali utama.
 
@@ -143,7 +141,6 @@ Koreksi Geser Samping (Sumbu Y): Jika error $y$ di luar batas toleransi deadzone
 
 Koreksi Rotasi Kasar (Sudut Ekstrem > 30°): Jika sudut kemiringan $\theta > 30^\circ$, robot akan mengeksekusi rotasi cepat searah jarum jam atau berlawanan arah lewat mode ALIGN_LARGE_ROTATION. Target sudut ditentukan secara dinamis menggunakan rumus:
 
-
 $$\theta_{\text{target}} = \text{clamp}(|\theta| - 10^\circ, \, \text{min}=30^\circ, \, \text{max}=170^\circ)$$
 
 Koreksi Rotasi Halus (Sudut Kecil < 30°): Robot bergerak presisi dalam mode ALIGN_ROTATION secara perlahan agar sumbu hadap lurus tegak terhadap marka lantai.
@@ -158,13 +155,11 @@ Deviasi posisi awal sumbu $X$ dari QR diubah menjadi parameter offset awal linta
 
 Target sudut dinamis ($\theta_{\text{target}}$) dikalkulasi sepanjang jarak tempuh ($x$) menggunakan turunan pertama kurva polinomial:
 
-
 $$y'(x) = \frac{6 \cdot \text{offset}}{\text{active\_dist}} \left( \frac{x}{\text{active\_dist}} - \left(\frac{x}{\text{active\_dist}}\right)^2 \right)$$
 
 $$\theta_{\text{target}}(x) = \arctan(y'(x))$$
 
 Deviasi aktual didapatkan dari gabungan sensor IMU Yaw dan selisih pembacaan Encoder roda kiri-kanan:
-
 
 $$u(t) = K_{p} \cdot e_{\theta}(t) + K_{i} \cdot \int e_{\theta}(t)\,dt + K_{d} \cdot \frac{de_{\theta}(t)}{dt} + K_{p\_enc} \cdot e_{\text{encoder}}(t)$$
 

@@ -1,24 +1,30 @@
-*Panduan Sistem Navigasi & HMI Industrial AMR (Autonomous Mobile Robot)
+# 🤖 Industrial AMR (Autonomous Mobile Robot) - Navigation & HMI System
 
-Dokumentasi ini menjelaskan arsitektur perangkat lunak, fungsionalitas berkas, mekanisme kontrol, dan panduan operasional untuk sistem kemudi AMR berbasis navigasi QR Code, sensor fusion (IMU + Encoder), serta sistem keamanan LiDAR.
+Repositori ini berisi sistem navigasi otonom berbasis QR Code, integrasi Sensor Fusion (IMU + Encoder), serta sistem keamanan LiDAR untuk robot industri Autonomous Mobile Robot (AMR). Proyek ini dilengkapi dengan antarmuka HMI (Human-Machine Interface) berbasis web interaktif.
 
-📌 Daftar Isi
+# 📌 Daftar Isi
 
-Arsitektur Sistem & Aliran Data
+- 🏗️ Arsitektur Sistem & Aliran Data
 
-Penjelasan Masing-Masing File
+- 📁 Struktur Direktori Proyek
 
-Mekanisme Kontrol Navigasi & Sensor Fusion
+- 📂 Penjelasan Berkas & Komponen
 
-Sistem Keselamatan LiDAR (SICK Nano)
+- ⚙️ Mekanisme Kontrol Navigasi
 
-Spesifikasi HMI & Web Dashboard
+A. Logika Penyelarasan (Alignment)
 
-Panduan Instalasi & Cara Menjalankan
+B. Kontrol Jalur S-Curve Lintasan
+
+🛡️ Sistem Keselamatan LiDAR (SICK Nano)
+
+💻 Spesifikasi HMI & Web Dashboard
+
+🚀 Panduan Instalasi & Cara Menjalankan
 
 🏗️ Arsitektur Sistem & Aliran Data
 
-Sistem AMR ini mengintegrasikan pemrosesan citra (visi komputer), kontrol PID pergerakan motor, pembacaan sensor odometri (Trackless/CANopen Encoder), serta perlindungan tabrakan berbasis ROS LiDAR.
+Sistem AMR ini mengintegrasikan pemrosesan citra komputer (Computer Vision), kendali PID pergerakan motor diferensial, pembacaan umpan balik odometri (Trackless/CANopen Encoder), serta sistem keselamatan LiDAR berbasis ROS.
 
        [ Kamera USB ] -> Deteksi QR (amr_qr_nav.py)
               |
@@ -34,11 +40,26 @@ Sistem AMR ini mengintegrasikan pemrosesan citra (visi komputer), kontrol PID pe
 (Analog)   (ROS)     (CAN / Serial)
 
 
-📂 Penjelasan Masing-Masing File
+📁 Struktur Direktori Proyek
+
+Agar aplikasi Flask dan pengontrol dapat berjalan dengan lancar, pastikan struktur berkas di dalam repositori Anda disusun seperti berikut:
+
+amr-navigation-system/
+├── templates/
+│   └── index.html         # Tampilan HMI Dashboard (Frontend)
+├── Encoder_.eds           # Electronic Data Sheet CANopen untuk Encoder
+├── README.md              # Dokumentasi Proyek
+├── amr_controller.py      # Otak Utama & Integrasi Kontrol AMR
+├── amr_qr_nav.py          # Modul Pengolahan Citra & Deteksi QR
+├── app.py                 # Flask Web Server & API Gateway
+└── encoder_idset.py       # Utilitas Konfigurasi ID Encoder CANopen
+
+
+📂 Penjelasan Berkas & Komponen
 
 1. amr_controller.py (Otak Utama AMR)
 
-Berkas ini bertindak sebagai Main Controller yang mengatur logika navigasi otonom dan manual, state machine robot, serta antarmuka dengan modul perangkat keras fisik.
+Bertindak sebagai Main Controller yang mengatur logika navigasi otonom dan manual, state machine robot, serta antarmuka dengan modul perangkat keras fisik.
 
 Fungsi Utama:
 
@@ -46,17 +67,15 @@ Menginisialisasi Node ROS (amr_controller) untuk berlangganan data sensor LiDAR 
 
 Menjalankan thread kamera latar belakang (start_camera_thread) yang mengaktifkan sistem visi.
 
-Menghubungkan driver I/O Digital (CK5162E) dan Analog DAC (CKDA08ETH) untuk menggerakkan driver motor BLDC 400W secara diferensial.
-
-Mengimplementasikan kontrol loop navigasi (control_loop dan handle_auto_navigation) dengan toleransi dinamis.
+Menghubungkan driver I/O Digital (CK5162E) dan Analog DAC (CKDA08ETH) untuk menggerakkan roda motor BLDC 400W secara diferensial.
 
 Memproses tombol fisik industri (E-Stop pada DI0, Start Auto pada DI1, Stop Auto pada DI2) dengan algoritma debouncing.
 
-Mengatur kendali darurat via protokol MQTT broker untuk kemudahan integrasi dengan sistem WMS (Warehouse Management System).
+Mendukung kendali jarak jauh via protokol broker MQTT untuk integrasi dengan Warehouse Management System (WMS).
 
 2. amr_qr_nav.py (Sistem Visi Kamera & Deteksi QR)
 
-Modul ini menangani pemrosesan citra dari kamera bawah yang mengarah ke lantai untuk mencari markah QR Code.
+Modul ini menangani pemrosesan citra dari kamera bawah yang mengarah ke lantai untuk mencari markah jalan berupa QR Code.
 
 Fungsi Utama:
 
@@ -65,12 +84,12 @@ Menggunakan OpenCV (cv2.QRCodeDetector) untuk menangkap frame kamera dan mendeko
 Menghitung orientasi rotasi (kemiringan sudut) QR Code terhadap sumbu kamera dengan algoritma proyeksi vektor:
 
 
-$$\theta_{rotasi} = \text{atan2}(dx, dy)$$
+$$\theta_{\text{rotasi}} = \text{atan2}(dx, dy)$$
 
 
 Vektor dihitung dari titik tengah bawah QR ke titik tengah atas QR, sehingga sangat toleran terhadap distorsi kemiringan fisik kamera (camera tilt perspective).
 
-Menyediakan fungsi visualisasi overlay (menggambar kotak batas QR, garis koordinat, dan arah vektor hadap QR) sebelum mengirim data penyimpangan (error $e_x$, $e_y$, dan $\theta$) ke pengendali utama.
+Menyediakan visualisasi overlay (menggambar kotak batas QR, sumbu koordinat, arah hadap QR) sebelum mengirim data penyimpangan ($e_x$, $e_y$, dan $\theta$) ke pengendali utama.
 
 3. app.py (Web Server & API Gateway)
 
@@ -82,7 +101,7 @@ Monkey Patching: Melakukan modifikasi dinamis pada metode IntegratedQRSystem.pro
 
 Menyediakan API RESTful untuk memantau status telemetri robot secara real-time (/api/status), memicu koneksi hardware (/api/connect), memicu E-stop soft (/api/estop), mengubah mode kerja (/api/mode), dan mengontrol pergerakan manual (/api/manual/move & /api/manual/stop).
 
-4. index.html (HMI Dashboard Web)
+4. templates/index.html (HMI Dashboard Web)
 
 Halaman depan (Front-end) web dashboard modern berbasis Bootstrap 5 dan Font Awesome dengan gaya bertema gelap (dark mode) yang dioptimalkan untuk layar tablet industri / IPC (Industrial PC) pada bodi AMR.
 
@@ -116,16 +135,16 @@ Digunakan oleh encoder_idset.py dan kelas TracklessSystem untuk memetakan alamat
 
 ⚙️ Mekanisme Kontrol Navigasi & Sensor Fusion
 
-A. Aliran Logika Penyelarasan (Alignment)
+A. Logika Penyelarasan (Alignment)
 
-Saat robot mendeteksi QR Code baru, ia akan melakukan tahapan penyelarasan posisi sebelum mengeksekusi instruksi pergerakan:
+Saat robot mendekati QR Code baru, ia akan melakukan beberapa tahapan penyelarasan posisi sebelum mengeksekusi instruksi pergerakan selanjutnya:
 
-Koreksi Geser Samping (Sumbu Y): Jika error $y$ di luar batas toleransi deadzone_y (25 px), AMR akan masuk ke mode ALIGN_Y dengan sistem pulsa dinamis (pulse-move) demi menghindari slip pada roda.
+Koreksi Geser Samping (Sumbu Y): Jika error $y$ di luar batas toleransi deadzone_y ($25\text{ px}$), AMR akan masuk ke mode ALIGN_Y menggunakan sistem pergerakan pulsa (pulse-move) demi menghindari slip pada roda.
 
 Koreksi Rotasi Kasar (Sudut Ekstrem > 30°): Jika sudut kemiringan $\theta > 30^\circ$, robot akan mengeksekusi rotasi cepat searah jarum jam atau berlawanan arah lewat mode ALIGN_LARGE_ROTATION. Target sudut ditentukan secara dinamis menggunakan rumus:
 
 
-$$\theta_{target} = \text{clamp}(|\theta| - 10^\circ, \, \text{min}=30^\circ, \, \text{max}=170^\circ)$$
+$$\theta_{\text{target}} = \text{clamp}(|\theta| - 10^\circ, \, \text{min}=30^\circ, \, \text{max}=170^\circ)$$
 
 Koreksi Rotasi Halus (Sudut Kecil < 30°): Robot bergerak presisi dalam mode ALIGN_ROTATION secara perlahan agar sumbu hadap lurus tegak terhadap marka lantai.
 
@@ -137,17 +156,17 @@ Saat bergerak maju antar-QR, robot menggunakan S-Curve lateral correction berbas
 
 Deviasi posisi awal sumbu $X$ dari QR diubah menjadi parameter offset awal lintasan ($scurve\_offset\_cm$).
 
-Target sudut dinamis ($\theta_{target}$) dikalkulasi sepanjang jarak tempuh ($x$) menggunakan turunan pertama kurva polinomial:
+Target sudut dinamis ($\theta_{\text{target}}$) dikalkulasi sepanjang jarak tempuh ($x$) menggunakan turunan pertama kurva polinomial:
 
 
 $$y'(x) = \frac{6 \cdot \text{offset}}{\text{active\_dist}} \left( \frac{x}{\text{active\_dist}} - \left(\frac{x}{\text{active\_dist}}\right)^2 \right)$$
 
-$$\theta_{target}(x) = \arctan(y'(x))$$
+$$\theta_{\text{target}}(x) = \arctan(y'(x))$$
 
 Deviasi aktual didapatkan dari gabungan sensor IMU Yaw dan selisih pembacaan Encoder roda kiri-kanan:
 
 
-$$u(t) = K_{p} \cdot e_{\theta}(t) + K_{i} \cdot \int e_{\theta}(t)\,dt + K_{d} \cdot \frac{de_{\theta}(t)}{dt} + K_{p\_enc} \cdot e_{encoder}(t)$$
+$$u(t) = K_{p} \cdot e_{\theta}(t) + K_{i} \cdot \int e_{\theta}(t)\,dt + K_{d} \cdot \frac{de_{\theta}(t)}{dt} + K_{p\_enc} \cdot e_{\text{encoder}}(t)$$
 
 Sinyal koreksi kontrol $u(t)$ diumpankan balik untuk membedakan voltase kecepatan motor kiri dan motor kanan.
 
@@ -217,25 +236,30 @@ Animasi berkedip merah saat aktif
 
 A. Prasyarat Sistem & Dependensi
 
-Pastikan pustaka pendukung berikut telah terinstal pada sistem operasi (direkomendasikan Linux Ubuntu dengan ROS Noetic):
+Sistem operasi yang direkomendasikan adalah Linux Ubuntu 20.04 LTS dengan ROS Noetic.
 
-# Instalasi pustaka Python penting
+Instal pustaka Python yang diperlukan:
+
+# Update package list
+sudo apt update
+
+# Instal dependensi Python utama
 pip3 install flask opencv-python numpy paho-mqtt python-canopen
 
-# Pastikan Driver Serial & Port USB CAN memiliki izin akses
+# Berikan hak akses untuk port hardware serial & USB-to-CAN
 sudo chmod 666 /dev/ttyACM0
 sudo chmod 666 /dev/ttyUSB0
 
 
 B. Langkah Menjalankan Aplikasi
 
-Jalankan ROS Node & Core (jika menggunakan Lidar Fisik):
+Jalankan ROS Core dan Driver LiDAR SICK (jika menggunakan LiDAR fisik):
 
 roscore
-# (Pastikan driver sick_safetyscanners sudah aktif dan mempublikasikan data ke /sick_safetyscanners/scan)
+# (Gunakan terminal terpisah untuk menjalankan driver sick_safetyscanners)
 
 
-Jalankan Aplikasi Web HMI & Kontroler Utama:
+Jalankan Aplikasi Web Server HMI & Kontroler Utama:
 Jalankan file app.py yang secara otomatis akan menginisialisasi sistem kontrol utama AMRController:
 
 sudo python3 app.py
@@ -244,7 +268,7 @@ sudo python3 app.py
 Server web Flask akan mulai berjalan pada alamat http://0.0.0.0:5050.
 
 Akses Dashboard Pengguna:
-Buka peramban web (Google Chrome/Firefox) di PC lokal atau tablet yang terhubung dalam satu jaringan Wi-Fi AMR, lalu akses alamat IP robot:
+Buka peramban web (Google Chrome / Mozilla Firefox) di tablet HMI atau laptop yang terhubung dalam satu jaringan Wi-Fi AMR, lalu akses alamat IP robot:
 
 http://<IP_ROBOT_AMR>:5050
 
@@ -253,6 +277,10 @@ Operasional:
 
 Klik tombol RECONNECT HARDWARE di bagian bawah telemetry panel untuk menyinkronkan koneksi DAC dan I/O controller.
 
-Gunakan tombol MANUAL untuk menggerakkan robot dengan tombol arah virtual.
+Gunakan tombol MANUAL untuk menguji pergerakan roda dengan tombol arah virtual.
 
 Tekan tombol AUTO RUN untuk memindahkan robot ke mode otonom agar mengikuti markah jalan QR Code di lantai pabrik.
+
+[!IMPORTANT]
+
+Selalu pastikan area depan AMR bebas dari halangan fisik saat pertama kali mengaktifkan AUTO RUN. Gunakan tombol E-STOP fisik atau tombol darurat pada Web Dashboard apabila terjadi deviasi pergerakan yang membahayakan.

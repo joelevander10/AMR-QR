@@ -185,47 +185,7 @@ AMR dilengkapi dengan sensor keselamatan laser scanner LiDAR SICK yang terintegr
 
 HMI web dirancang agar mudah digunakan oleh operator pabrik langsung di lapangan:
 
-Komponen Visual
-
-Deskripsi Fungsi
-
-Indikator State
-
-Badge Offline/Online
-
-Status komunikasi antara HMI dan Web Server robot
-
-Hijau (Online) / Merah (Offline)
-
-Video Feed Overlay
-
-Streaming visualisasi sensor kamera dengan proyeksi sudut QR
-
-Overlay garis hijau jika terdeteksi
-
-Lidar Safety Badge
-
-Menampilkan status zonasi jarak hambatan secara cepat
-
-✔ OK (Aman) / ⚠ SLOW (Melambat) / ⛔ STOP (Bahaya)
-
-Telemetry Panel
-
-Data numerik IMU, Target S-Curve, Odometri roda, dan Error QR
-
-Diperbarui secara berkala setiap $200\text{ ms}$
-
-Virtual Joystick
-
-Tombol navigasi manual arah (Maju, Mundur, Rotasi)
-
-Mendukung klik mouse & sentuhan jari (touch screen)
-
-E-Stop Button
-
-Tombol darurat lunak (soft emergency stop)
-
-Animasi berkedip merah saat aktif
+<img width="973" height="617" alt="image" src="https://github.com/user-attachments/assets/3dd48319-c61f-4b06-81ac-043f04d2d006" />
 
 # 🚀 Panduan Instalasi & Cara Menjalankan
 

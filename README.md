@@ -79,9 +79,9 @@ Modul ini menangani pemrosesan citra dari kamera bawah yang mengarah ke lantai u
 
 Fungsi Utama:
 
-        - Menggunakan OpenCV (cv2.QRCodeDetector) untuk menangkap frame kamera dan mendekode isi QR Code.
+  - Menggunakan OpenCV (cv2.QRCodeDetector) untuk menangkap frame kamera dan mendekode isi QR Code.
 
-        - Menghitung orientasi rotasi (kemiringan sudut) QR Code terhadap sumbu kamera dengan mencari vektor dari tengah-bawah ke tengah-atas QR:
+  - Menghitung orientasi rotasi (kemiringan sudut) QR Code terhadap sumbu kamera dengan mencari vektor dari tengah-bawah ke tengah-atas QR:
 
 $$\theta_{\text{rotasi}} = \text{atan2}(dx, dy)$$
 

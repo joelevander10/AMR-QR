@@ -106,7 +106,7 @@ class IntegratedQRSystem(QRNavigationSystem):
         if self.controller.nav_mode in ["ALIGN_LARGE_ROTATION", "POST_ROT_CREEP"]:
             return
 
-        # 3. PRIORITAS KETIGA: sudut kecil (<30°) ? pulse halus
+        # 3. PRIORITAS KETIGA: sudut kecil (<30°) → pulse halus
         if not aligned_angle and self.controller.nav_mode not in CONTROL_LOOP_MODES:
             self.alignment_start_time = 0
             if self._osc_was_aligned:
@@ -121,10 +121,10 @@ class IntegratedQRSystem(QRNavigationSystem):
             self._osc_count      += 1
             self._osc_was_aligned = True
 
-        # Osilasi berlebihan ? langsung eksekusi
+        # Osilasi berlebihan → langsung eksekusi
         if self._osc_count >= self.OSCILLATION_MAX:
             self.controller.set_nav_status_detail(
-                f"OSILASI {self._osc_count}x ? LANGSUNG EKSEKUSI!")
+                f"OSILASI {self._osc_count}x → LANGSUNG EKSEKUSI!")
             self.is_executing         = True
             self.execution_start_time = time.time()
             self.last_command         = f"{cmd}:{val}"
@@ -151,38 +151,79 @@ class IntegratedQRSystem(QRNavigationSystem):
 
 # ==========================================
 # KELAS MONITOR LIDAR (SAFETY)
+# Zone pantau: -45° s/d +45° (depan AMR)
+# STOP_DISTANCE : 0.6 m → motor berhenti penuh
+# SLOW_DISTANCE : 1.0 m → motor melambat 50%
 # ==========================================
 class LidarSafetyMonitor:
     def __init__(self):
-        self.STOP_DISTANCE = 0.6  
-        self.SLOW_DISTANCE = 1.0  
+        self.STOP_DISTANCE = 0.6        # meter — motor berhenti penuh
+        self.SLOW_DISTANCE = 1.0        # meter — motor melambat 50%
+
+        # Zona pantau depan AMR
+        # Berdasarkan tuning: -60° sampai +60°
+        self.ANGLE_MIN_DEG = -30.0
+        self.ANGLE_MAX_DEG = 30.0
+
+        # Batas bawah filter dinaikkan ke 0.15m untuk buang noise
+        # artifact SICK (nilai 0.009m yang selalu muncul di bawah range_min)
+        self.RANGE_MIN_VALID = 0.15     # meter
+        self.RANGE_MAX_VALID = 10.0     # meter — cukup untuk deteksi obstacle
+
         self.obstacle_stop = False
         self.obstacle_slow = False
         self.min_dist      = 99.9
-        
+        self.active_ranges = 0
+
         if ROS_AVAILABLE:
             try:
                 self.sub = rospy.Subscriber(
                     "/sick_safetyscanners/scan", LaserScan, self.callback)
-            except Exception as e: 
+                print(f"[LIDAR] Subscribe /sick_safetyscanners/scan "
+                      f"— zona {self.ANGLE_MIN_DEG}°~{self.ANGLE_MAX_DEG}°"
+                      f" | filter {self.RANGE_MIN_VALID}–{self.RANGE_MAX_VALID}m")
+            except Exception as e:
                 print(f"[LIDAR] Gagal subscribe ROS: {e}")
+        else:
+            print("[LIDAR] ROS tidak tersedia, safety lidar dinonaktifkan.")
 
     def callback(self, data):
         try:
-            ranges       = data.ranges
-            mid          = len(ranges) // 2
-            window       = int(len(ranges) * 0.25)
-            front_ranges = ranges[max(0, mid-window) : min(len(ranges), mid+window)]
-            valid        = [r for r in front_ranges if 0.05 < r < 10.0 and not math.isinf(r)]
-            if not valid: 
+            angle_min = data.angle_min
+            angle_inc = data.angle_increment
+            n         = len(data.ranges)
+
+            # Konversi sudut zona ke index ray
+            idx_min = int((math.radians(self.ANGLE_MIN_DEG) - angle_min) / angle_inc)
+            idx_max = int((math.radians(self.ANGLE_MAX_DEG) - angle_min) / angle_inc)
+
+            # Clamp dan urutkan
+            idx_min = max(0, min(n - 1, idx_min))
+            idx_max = max(0, min(n - 1, idx_max))
+            if idx_min > idx_max:
+                idx_min, idx_max = idx_max, idx_min
+
+            zone_ranges = data.ranges[idx_min : idx_max + 1]
+
+            # Filter ketat: buang noise di bawah range_min fisik sensor
+            valid = [r for r in zone_ranges
+                     if not math.isinf(r) and not math.isnan(r)
+                     and self.RANGE_MIN_VALID < r < self.RANGE_MAX_VALID]
+
+            self.active_ranges = len(valid)
+
+            if not valid:
                 self.min_dist      = 99.9
                 self.obstacle_stop = False
                 self.obstacle_slow = False
                 return
+
             self.min_dist      = min(valid)
             self.obstacle_stop = self.min_dist < self.STOP_DISTANCE
             self.obstacle_slow = self.min_dist < self.SLOW_DISTANCE
-        except: pass
+
+        except Exception as e:
+            print(f"[LIDAR] Callback error: {e}")
 
 
 # ==========================================
@@ -195,6 +236,21 @@ class AMRController:
         - Panjang: 1050mm | Lebar: 500mm | Jarak antar roda (Track): 377mm
         - Motor: BLDC 400W 3000 RPM, Gearbox 1:30 (Analog 0-5V)
         """
+        # =======================================================
+        # INISIALISASI ROS NODE
+        # Harus dipanggil SEBELUM LidarSafetyMonitor dibuat,
+        # agar rospy.Subscriber bisa terdaftar dengan benar.
+        # anonymous=True agar tidak bentrok jika rosrun/roslaunch
+        # sudah menginisialisasi node lain.
+        # =======================================================
+        if ROS_AVAILABLE:
+            try:
+                rospy.init_node('amr_controller', anonymous=True)
+                print("[ROS] Node 'amr_controller' berhasil diinisialisasi.")
+            except rospy.exceptions.ROSException as e:
+                # Sudah ada node aktif — tidak masalah, subscriber tetap bisa jalan
+                print(f"[ROS] init_node: {e}")
+
         self.QR_REAL_SIZE_MM = 30.0
         self.TRACK_WIDTH_MM  = 377.0 
 
@@ -203,12 +259,18 @@ class AMRController:
         self.analog    = CKDA08ETH_Controller("192.168.1.30")
         self.PIN_R_FWD = 1; self.PIN_R_REV = 2; self.PIN_R_BRK = 3
         self.PIN_L_FWD = 4; self.PIN_L_REV = 5; self.PIN_L_BRK = 6
-        self.ANA_CH_R  = 0; self.ANA_CH_L  = 1; self.PIN_ESTOP = 0 
+        self.ANA_CH_R      = 0; self.ANA_CH_L  = 1
+        self.PIN_ESTOP     = 0   # DI0 — Emergency Stop (NC: aktif saat LOW)
+        self.PIN_START_AUTO = 1  # DI1 — Tombol START AUTO
+        self.PIN_STOP_AUTO  = 2  # DI2 — Tombol STOP AUTO / kembali MANUAL
+
+        # --- Debounce state tombol fisik DI1 & DI2 ---
+        self._btn_start_prev = False
+        self._btn_stop_prev  = False
 
         # =======================================================
         # KALIBRASI MOTOR (TRIM) & KOREKSI ARAH
         # =======================================================
-        # Nilai Trim Auto disimpan di variabel terpisah 
         self.TRIM_L_AUTO      = 0.96
         self.TRIM_R_AUTO      = 1.00
         
@@ -275,12 +337,22 @@ class AMRController:
 
         # =======================================================
         # PARAMETER ROTASI BESAR (ALIGN_LARGE_ROTATION)
+        # Diubah: LARGE_ROT_TARGET_DEG kini DINAMIS (diset di
+        # start_large_rotation), bukan hardcode 85°
         # =======================================================
-        self.LARGE_ROT_TARGET_DEG = 85.0
+        self.LARGE_ROT_TARGET_DEG = 85.0   # default awal, akan dioverride
         self._pre_rot_x_offset    = 0.0
         self._rot_direction       = 0
         self.V_POST_ROT           = 0.3 * self.V_SCALE
         self._post_rot_creep_dir  = 1
+
+        # =======================================================
+        # PARAMETER QR SEARCH ROTATION
+        # Aktif saat QR hilang terlalu lama → AMR cari QR dengan rotasi
+        # =======================================================
+        self.QR_TIMEOUT_SEARCH = 3.0    # detik tanpa QR sebelum mulai cari
+        self.QR_SEARCH_ROT_DIR = 1      # arah rotasi pencarian: +1=kanan, -1=kiri
+        self.QR_SEARCH_MAX_DEG = 170.0  # maksimal rotasi pencarian (hampir 180°)
 
         # --- GOAL & HOME state ---
         self.goal_pending = False
@@ -438,7 +510,6 @@ class AMRController:
     def execute_manual_control(self):
         if not self.current_direction: self.stop_motor(); return
         
-        # Kecepatan manual dinaikkan menjadi 1.5V (1.5 * 20.0 scale)
         base = 1.5 * self.V_SCALE  
         d = self.current_direction.upper()
         
@@ -450,8 +521,18 @@ class AMRController:
 
     # ----------------------------------------------------------
     # START LARGE ROTATION
+    # [DIUBAH] Target rotasi kini DINAMIS berdasarkan angle yang
+    # diterima, bukan hardcode 85°. Formula:
+    #   target = clamp(abs(angle) - 10°, min=30°, max=170°)
+    # Contoh:
+    #   angle=45°  → target=35°
+    #   angle=90°  → target=80°
+    #   angle=180° → target=170° (hampir 180°, dengan buffer 10°)
     # ----------------------------------------------------------
     def start_large_rotation(self, target_angle):
+        # Target dinamis: abs(angle) - 10° sebagai buffer, clamp 30°~170°
+        self.LARGE_ROT_TARGET_DEG = max(30.0, min(abs(target_angle) - 10.0, 170.0))
+
         self.nav_mode           = "ALIGN_LARGE_ROTATION"
         self.target_large_angle = target_angle
         self._rot_direction     = 1 if target_angle > 0 else -1
@@ -462,7 +543,8 @@ class AMRController:
         if self.trackless:
             self.start_yaw = self.trackless.get_yaw()
         self.set_nav_status_detail(
-            f"LARGE ROT: {target_angle:.1f}° | x_off={self._pre_rot_x_offset:.1f}mm")
+            f"LARGE ROT: {target_angle:.1f}° → target={self.LARGE_ROT_TARGET_DEG:.1f}° "
+            f"| x_off={self._pre_rot_x_offset:.1f}mm")
 
     # ----------------------------------------------------------
     # ENTER REACQUIRE
@@ -481,7 +563,7 @@ class AMRController:
             self._post_rot_creep_dir = creep_dir
             self.nav_mode = "POST_ROT_CREEP"
             self.set_nav_status_detail(
-                f"ROTASI SELESAI ? {label} cari QR "
+                f"ROTASI SELESAI → {label} cari QR "
                 f"(x_off={self._pre_rot_x_offset:.0f}mm, "
                 f"belok={'KANAN' if rot_sign>0 else 'KIRI'})")
 
@@ -496,7 +578,7 @@ class AMRController:
                 self.return_home  = False
                 self.mode         = "MANUAL"
                 self.nav_mode     = "GOAL_REACHED"
-                self.set_nav_status_detail("?? HOMEPOST TERCAPAI! Tekan START AUTO untuk lanjut.")
+                self.set_nav_status_detail("✅ HOMEPOST TERCAPAI! Tekan START AUTO untuk lanjut.")
                 return
             else:
                 cmd = "MAJU"
@@ -511,7 +593,7 @@ class AMRController:
                 self.mode         = "MANUAL"
                 self.nav_mode     = "GOAL_REACHED"
                 self.goal_pending = False
-                self.set_nav_status_detail("?? GOAL TERCAPAI! Tekan START AUTO untuk lanjut.")
+                self.set_nav_status_detail("✅ GOAL TERCAPAI! Tekan START AUTO untuk lanjut.")
                 return
 
         if "PUTAR" in cmd.upper() and self.trackless:
@@ -553,10 +635,41 @@ class AMRController:
     def control_loop(self):
         while True:
             if self.connected:
+                # --- DI0: Emergency Stop (NC — aktif saat LOW) ---
                 estop = not self.digital.read_input(self.PIN_ESTOP)
                 if estop != self.estop_active:
                     self.estop_active = estop
-                    if estop: self.mode = "MANUAL"
+                    if estop:
+                        self.mode = "MANUAL"
+                        print("[ESTOP] Emergency Stop aktif!")
+                    else:
+                        print("[ESTOP] Emergency Stop dilepas.")
+
+                # --- DI1: Tombol START AUTO (rising-edge) ---
+                btn_start = self.digital.read_input(self.PIN_START_AUTO)
+                if btn_start and not self._btn_start_prev:
+                    if not self.estop_active:
+                        self.mode = "AUTO"
+                        if self.nav_mode == "GOAL_REACHED":
+                            self.nav_mode    = "IDLE"
+                            self.ignore_goal = True
+                            self.reset_vision_system()
+                            self.set_nav_status_detail("LANJUT DARI GOAL... (Tombol DI1)")
+                        else:
+                            self.set_nav_status_detail("MODE AUTO aktif (Tombol DI1)")
+                        print("[DI1] START AUTO ditekan → MODE AUTO")
+                self._btn_start_prev = btn_start
+
+                # --- DI2: Tombol STOP AUTO / kembali MANUAL (rising-edge) ---
+                btn_stop = self.digital.read_input(self.PIN_STOP_AUTO)
+                if btn_stop and not self._btn_stop_prev:
+                    self.return_home = False
+                    self.mode        = "MANUAL"
+                    self.stop_motor()
+                    self.set_nav_status_detail("MODE MANUAL aktif (Tombol DI2)")
+                    print("[DI2] STOP AUTO ditekan → MODE MANUAL")
+                self._btn_stop_prev = btn_stop
+
             if self.estop_active:
                 self.stop_motor()
             elif self.mode == "AUTO":
@@ -589,7 +702,7 @@ class AMRController:
         # -- GOAL_REACHED ------------------------------------------
         if self.nav_mode == "GOAL_REACHED":
             self.stop_motor()
-            self.set_nav_status_detail("?? GOAL TERCAPAI! Tekan START AUTO untuk lanjut.")
+            self.set_nav_status_detail("✅ GOAL TERCAPAI! Tekan START AUTO untuk lanjut.")
             return
 
         # -- ALIGN_LARGE_ROTATION ----------------------------------
@@ -606,7 +719,8 @@ class AMRController:
                 out = math.copysign(rot_speed, self.target_large_angle)
                 self.set_motor(out, -out)
                 self.set_nav_status_detail(
-                    f"LARGE ROT: sisa {remaining_deg:.1f}° | {rot_speed:.1f}V")
+                    f"LARGE ROT: sisa {remaining_deg:.1f}° / "
+                    f"target {self.LARGE_ROT_TARGET_DEG:.0f}° | {rot_speed:.1f}V")
             return
 
         # -- POST_ROT_CREEP ----------------------------------------
@@ -615,7 +729,7 @@ class AMRController:
                 self.stop_motor()
                 self.nav_mode = "IDLE"
                 self.reset_vision_system()
-                self.set_nav_status_detail("QR TERBACA SETELAH ROTASI ? IDLE")
+                self.set_nav_status_detail("QR TERBACA SETELAH ROTASI → IDLE")
                 return
             if self.lidar.obstacle_stop:
                 self.stop_motor(); return
@@ -623,6 +737,75 @@ class AMRController:
             label = "MAJU" if self._post_rot_creep_dir > 0 else "MUNDUR"
             self.set_motor(spd, spd)
             self.set_nav_status_detail(f"POST ROT CREEP: {label} 0.3V | cari QR...")
+            return
+
+        # =======================================================
+        # [BARU] QR SEARCH ROTATION
+        # Aktif dari IDLE saat QR tidak terdeteksi > QR_TIMEOUT_SEARCH detik.
+        # Berguna terutama saat QR terbalik 180° (tidak terbaca kamera).
+        # AMR akan memutar sampai QR_SEARCH_MAX_DEG°, lalu balik arah
+        # jika QR masih belum ditemukan.
+        # =======================================================
+        if self.nav_mode == "IDLE":
+            # Cek timeout QR: sudah pernah lihat QR (last_qr_seen_time > 0)
+            # tapi sekarang sudah terlalu lama tidak kelihatan
+            qr_timeout = (
+                self.last_qr_seen_time > 0 and
+                time.time() - self.last_qr_seen_time > self.QR_TIMEOUT_SEARCH
+            )
+            if qr_timeout:
+                self.set_nav_status_detail(
+                    f"QR HILANG >{self.QR_TIMEOUT_SEARCH:.0f}s "
+                    f"→ SEARCH ROTATION {'KANAN' if self.QR_SEARCH_ROT_DIR > 0 else 'KIRI'}")
+                # Gunakan start_large_rotation dengan QR_SEARCH_MAX_DEG
+                # arah sesuai QR_SEARCH_ROT_DIR
+                search_angle = self.QR_SEARCH_MAX_DEG * self.QR_SEARCH_ROT_DIR
+                self.start_large_rotation(search_angle)
+                # Override nav_mode ke QR_SEARCH_ROTATION agar bisa dibedakan
+                # dari ALIGN_LARGE_ROTATION biasa
+                self.nav_mode = "QR_SEARCH_ROTATION"
+                if self.trackless:
+                    self.start_yaw = self.trackless.get_yaw()
+            return
+
+        if self.nav_mode == "QR_SEARCH_ROTATION":
+            degrees_rotated = abs(rel_yaw)
+            remaining_deg   = self.LARGE_ROT_TARGET_DEG - degrees_rotated
+
+            # Jika QR terbaca saat rotasi pencarian → langsung IDLE
+            if qr_sight:
+                self.stop_motor()
+                self.nav_mode = "IDLE"
+                self.reset_vision_system()
+                self.set_nav_status_detail("✅ QR DITEMUKAN saat SEARCH ROTATION → IDLE")
+                return
+
+            if remaining_deg <= 0.0:
+                # Rotasi pencarian habis, belum ketemu QR → balik arah
+                self.stop_motor()
+                self.QR_SEARCH_ROT_DIR *= -1
+                self.set_nav_status_detail(
+                    f"SEARCH ROTATION habis → balik arah "
+                    f"{'KANAN' if self.QR_SEARCH_ROT_DIR > 0 else 'KIRI'}")
+                time.sleep(0.3)
+                search_angle = self.QR_SEARCH_MAX_DEG * self.QR_SEARCH_ROT_DIR
+                self.start_large_rotation(search_angle)
+                self.nav_mode = "QR_SEARCH_ROTATION"
+                if self.trackless:
+                    self.start_yaw = self.trackless.get_yaw()
+                return
+
+            if self.lidar.obstacle_stop:
+                self.stop_motor()
+                self.set_nav_status_detail("SEARCH ROTATION: OBSTACLE STOP!")
+                return
+
+            rot_speed = 0.30 * self.V_SCALE
+            out = math.copysign(rot_speed, self.target_large_angle)
+            self.set_motor(out, -out)
+            self.set_nav_status_detail(
+                f"QR SEARCH ROT: sisa {remaining_deg:.1f}° "
+                f"| {'KANAN' if self.QR_SEARCH_ROT_DIR > 0 else 'KIRI'} | 0.3V")
             return
 
         # -- ALIGN_ROTATION & ALIGN_Y (pulse) ---------------------
@@ -696,13 +879,13 @@ class AMRController:
                 self.set_nav_status_detail(f"CREEP SCAN QR | Dist: {self.dist_traveled:.1f}cm")
                 return
 
-            # Profil kecepatan normal (0–170cm)
+            # Profil kecepatan normal
             target_speed = self.V_CRUISE
             if self.dist_traveled < self.ACCEL_DIST_CM:
                 ramp         = self.dist_traveled / self.ACCEL_DIST_CM
                 target_speed = self.V_STALL + (self.V_CRUISE - self.V_STALL) * ramp
             elif self.dist_traveled >= 250.0:
-                target_speed = 0.3 * self.V_SCALE  # 0.3V mulai 250cm
+                target_speed = 0.3 * self.V_SCALE
 
             if self.lidar.obstacle_stop:
                 self.stop_motor(); return
@@ -787,7 +970,7 @@ class AMRController:
             self.mode        = "AUTO"
             self.nav_mode    = "IDLE"
             self.reset_vision_system()
-            self.set_nav_status_detail("?? RETURN HOME aktif — cari HOMEPOST...")
+            self.set_nav_status_detail("🏠 RETURN HOME aktif — cari HOMEPOST...")
         elif p in ["STOP_AUTO", "STOP", "SPACE"]:
             self.return_home = False
             self.mode        = "MANUAL"
@@ -803,9 +986,27 @@ class AMRController:
 
 
 if __name__ == "__main__":
+    import signal
+
     c = AMRController()
     c.mode = "MANUAL"
-    
+
+    # Signal handler — Ctrl+C dan kill
+    def handle_shutdown(signum, frame):
+        print("\n[SYSTEM] Signal diterima, mematikan AMR...")
+        c.shutdown_system()
+        try:
+            c.client.loop_stop()
+            c.client.disconnect()
+        except: pass
+        if ROS_AVAILABLE:
+            try: rospy.signal_shutdown("User interrupt")
+            except: pass
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT,  handle_shutdown)
+    signal.signal(signal.SIGTERM, handle_shutdown)
+
     print("\n" + "="*50)
     print("AMR CONTROLLER AKTIF (MODE MANUAL)")
     print("Kontrol Keyboard (Terminal):")
@@ -816,82 +1017,62 @@ if __name__ == "__main__":
     print(" [SPACE] : Berhenti Motor")
     print(" [Q] atau Ctrl+C : Keluar/Shutdown")
     print("="*50 + "\n")
-    
-    try:
-        # Menggunakan select() yang sifatnya non-blocking (seperti ROS teleop_twist_keyboard)
-        import sys, select, termios, tty
-        settings = termios.tcgetattr(sys.stdin)
-        
-        def getKey():
-            tty.setraw(sys.stdin.fileno())
-            # Hanya menunggu selama 0.1 detik untuk key press, jadi loop tidak nge-hang (non-blocking)
-            rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
-            if rlist:
-                key = sys.stdin.read(1)
-            else:
-                key = ''
-            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
-            return key
 
-        print("[INFO] Menggunakan mode pembacaan non-blocking (ROS Teleop Style).")
+    try:
+        import tty, termios
+        def getch():
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setcbreak(fd)
+                ch = sys.stdin.read(1)
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            return ch
+
         while True:
-            key = getKey().lower()
-            
-            if key == '\x03' or key == 'q':  # Ctrl+C or Q
-                break
-                
+            key = getch().lower()
+            if key in ("\x03", "q"):
+                handle_shutdown(None, None)
             if c.mode == "MANUAL":
-                if key == 'w':
-                    c.current_direction = 'FORWARD'
+                if key == "w":
+                    c.current_direction = "FORWARD"
                     c.execute_manual_control()
                     print("\r[MANUAL] MAJU (1.5V)          ", end="", flush=True)
-                elif key == 's':
-                    c.current_direction = 'BACKWARD'
+                elif key == "s":
+                    c.current_direction = "BACKWARD"
                     c.execute_manual_control()
                     print("\r[MANUAL] MUNDUR (-1.5V)       ", end="", flush=True)
-                elif key == 'a':
-                    c.current_direction = 'LEFT'
+                elif key == "a":
+                    c.current_direction = "LEFT"
                     c.execute_manual_control()
                     print("\r[MANUAL] BELOK KIRI           ", end="", flush=True)
-                elif key == 'd':
-                    c.current_direction = 'RIGHT'
+                elif key == "d":
+                    c.current_direction = "RIGHT"
                     c.execute_manual_control()
                     print("\r[MANUAL] BELOK KANAN          ", end="", flush=True)
-                elif key == ' ':
-                    c.current_direction = 'NONE'
+                elif key == " ":
+                    c.current_direction = "NONE"
                     c.stop_motor()
                     print("\r[MANUAL] BERHENTI (STOP)      ", end="", flush=True)
-                    
+
     except Exception as e:
-        # Fallback paling aman jika environment terminal sangat ketat
-        print(f"\n[INFO] Mode Keyboard Teleop gagal (Error: {e}).")
-        print("[INFO] Menggunakan input() biasa. Anda harus menekan [ENTER] setelah mengetik W/A/S/D/Spasi.")
+        print(f"\n[INFO] Mode Keyboard Cepat gagal ({e}). Gunakan input() biasa.")
         while True:
             try:
-                cmd = input("\rWASD / Space (Stop) / Q (Quit): ").lower()
-                if 'q' in cmd: break
+                cmd = input("WASD / Space / Q: ").lower()
+                if cmd == "q":
+                    handle_shutdown(None, None)
                 if c.mode == "MANUAL":
-                    if 'w' in cmd:
-                        c.current_direction = 'FORWARD'
-                        c.execute_manual_control()
-                    elif 's' in cmd:
-                        c.current_direction = 'BACKWARD'
-                        c.execute_manual_control()
-                    elif 'a' in cmd:
-                        c.current_direction = 'LEFT'
-                        c.execute_manual_control()
-                    elif 'd' in cmd:
-                        c.current_direction = 'RIGHT'
-                        c.execute_manual_control()
-                    elif ' ' in cmd or cmd == '':
-                        c.current_direction = 'NONE'
-                        c.stop_motor()
+                    if cmd == "w":
+                        c.current_direction = "FORWARD"; c.execute_manual_control()
+                    elif cmd == "s":
+                        c.current_direction = "BACKWARD"; c.execute_manual_control()
+                    elif cmd == "a":
+                        c.current_direction = "LEFT"; c.execute_manual_control()
+                    elif cmd == "d":
+                        c.current_direction = "RIGHT"; c.execute_manual_control()
+                    elif cmd in (" ", ""):
+                        c.current_direction = "NONE"; c.stop_motor()
             except KeyboardInterrupt:
-                break
-    finally:
-        print("\n[SYSTEM] Mematikan AMR...")
-        try:
-            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
-        except: pass
-        c.shutdown_system()
-        sys.exit(0)
+                handle_shutdown(None, None)

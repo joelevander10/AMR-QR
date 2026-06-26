@@ -185,7 +185,7 @@ AMR dilengkapi dengan sensor keselamatan laser scanner LiDAR SICK yang terintegr
 
 HMI web dirancang agar mudah digunakan oleh operator pabrik langsung di lapangan:
 
-<img width="673" height="317" alt="image" src="https://github.com/user-attachments/assets/3dd48319-c61f-4b06-81ac-043f04d2d006" />
+<img width="673" height="417" alt="image" src="https://github.com/user-attachments/assets/3dd48319-c61f-4b06-81ac-043f04d2d006" />
 
 # 🚀 Panduan Instalasi & Cara Menjalankan
 

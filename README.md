@@ -63,15 +63,15 @@ Bertindak sebagai Main Controller yang mengatur logika navigasi otonom dan manua
 
 - Fungsi Utama:
 
-        - Menginisialisasi Node ROS (amr_controller) untuk berlangganan data sensor LiDAR SICK.
+  - Menginisialisasi Node ROS (amr_controller) untuk berlangganan data sensor LiDAR SICK.
 
-        - Menjalankan thread kamera latar belakang (start_camera_thread) yang mengaktifkan sistem visi.
+  - Menjalankan thread kamera latar belakang (start_camera_thread) yang mengaktifkan sistem visi.
 
-        - Menghubungkan driver I/O Digital (CK5162E) dan Analog DAC (CKDA08ETH) untuk menggerakkan roda motor BLDC 400W secara diferensial.
+  - Menghubungkan driver I/O Digital (CK5162E) dan Analog DAC (CKDA08ETH) untuk menggerakkan roda motor BLDC 400W secara diferensial.
 
-        - Memproses tombol fisik industri (E-Stop pada DI0, Start Auto pada DI1, Stop Auto pada DI2) dengan algoritma debouncing.
+  - Memproses tombol fisik industri (E-Stop pada DI0, Start Auto pada DI1, Stop Auto pada DI2) dengan algoritma debouncing.
 
-        - Mendukung kendali jarak jauh via protokol broker MQTT untuk integrasi dengan Warehouse Management System (WMS).
+  - Mendukung kendali jarak jauh via protokol broker MQTT untuk integrasi dengan Warehouse Management System (WMS).
 
 2. amr_qr_nav.py (Sistem Visi Kamera & Deteksi QR)
 
@@ -79,9 +79,9 @@ Modul ini menangani pemrosesan citra dari kamera bawah yang mengarah ke lantai u
 
 Fungsi Utama:
 
-Menggunakan OpenCV (cv2.QRCodeDetector) untuk menangkap frame kamera dan mendekode isi QR Code.
+        - Menggunakan OpenCV (cv2.QRCodeDetector) untuk menangkap frame kamera dan mendekode isi QR Code.
 
-Menghitung orientasi rotasi (kemiringan sudut) QR Code terhadap sumbu kamera dengan mencari vektor dari tengah-bawah ke tengah-atas QR:
+        - Menghitung orientasi rotasi (kemiringan sudut) QR Code terhadap sumbu kamera dengan mencari vektor dari tengah-bawah ke tengah-atas QR:
 
 $$\theta_{\text{rotasi}} = \text{atan2}(dx, dy)$$
 

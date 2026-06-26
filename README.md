@@ -169,19 +169,19 @@ $$u(t) = K_{p} \cdot e_{\theta}(t) + K_{i} \cdot \int e_{\theta}(t)\,dt + K_{d} 
 
 AMR dilengkapi dengan sensor keselamatan laser scanner LiDAR SICK yang terintegrasi melalui ROS (Robot Operating System) pada topik /sick_safetyscanners/scan.
 
-Zona Pantau Depan: Dibatasi ketat pada sudut depan $-30^\circ$ hingga $+30^\circ$ untuk memfokuskan deteksi halangan tepat di jalur lintasan robot.
+- Zona Pantau Depan: Dibatasi ketat pada sudut depan $-30^\circ$ hingga $+30^\circ$ untuk memfokuskan deteksi halangan tepat di jalur lintasan robot.
 
-Filter Noise Validasi: Mengabaikan objek di bawah $0.15\text{ m}$ untuk membuang anomali pantulan piringan logam robot sendiri (SICK laser artifact reflection).
+- Filter Noise Validasi: Mengabaikan objek di bawah $0.15\text{ m}$ untuk membuang anomali pantulan piringan logam robot sendiri (SICK laser artifact reflection).
 
-Skema Respons Jarak:
+- Skema Respons Jarak:
 
-Zona Aman ($d > 1.0\text{ m}$): Kecepatan motor berjalan normal 100%.
+  - Zona Aman ($d > 1.0\text{ m}$): Kecepatan motor berjalan normal 100%.
 
-Zona Peringatan ($0.6\text{ m} \le d \le 1.0\text{ m}$): Robot memasuki status SLOW, kecepatan putaran motor diredam sebesar 50% dari kecepatan jelajah.
+  - Zona Peringatan ($0.6\text{ m} \le d \le 1.0\text{ m}$): Robot memasuki status SLOW, kecepatan putaran motor diredam sebesar 50% dari kecepatan jelajah.
 
-Zona Bahaya ($d < 0.6\text{ m}$): Robot memasuki status STOP, rem elektromagnetik aktif secara instan untuk menghentikan laju robot demi menghindari tabrakan fisik.
+  - Zona Bahaya ($d < 0.6\text{ m}$): Robot memasuki status STOP, rem elektromagnetik aktif secara instan untuk menghentikan laju robot demi menghindari tabrakan fisik.
 
-💻 Spesifikasi HMI & Web Dashboard
+# 💻 Spesifikasi HMI & Web Dashboard
 
 HMI web dirancang agar mudah digunakan oleh operator pabrik langsung di lapangan:
 
@@ -227,9 +227,9 @@ Tombol darurat lunak (soft emergency stop)
 
 Animasi berkedip merah saat aktif
 
-🚀 Panduan Instalasi & Cara Menjalankan
+# 🚀 Panduan Instalasi & Cara Menjalankan
 
-A. Prasyarat Sistem & Dependensi
+## A. Prasyarat Sistem & Dependensi
 
 Sistem operasi yang direkomendasikan adalah Linux Ubuntu 20.04 LTS dengan ROS Noetic.
 
@@ -246,16 +246,16 @@ sudo chmod 666 /dev/ttyACM0
 sudo chmod 666 /dev/ttyUSB0
 
 
-B. Langkah Menjalankan Aplikasi
+## B. Langkah Menjalankan Aplikasi
 
-Jalankan ROS Core dan Driver LiDAR SICK (jika menggunakan LiDAR fisik):
+1. Jalankan ROS Core dan Driver LiDAR SICK (jika menggunakan LiDAR fisik):
 
 roscore
 # (Gunakan terminal terpisah untuk menjalankan driver sick_safetyscanners)
 
 
-Jalankan Aplikasi Web Server HMI & Kontroler Utama:
-Jalankan file app.py yang secara otomatis akan menginisialisasi sistem kontrol utama AMRController:
+2. Jalankan Aplikasi Web Server HMI & Kontroler Utama:
+3. Jalankan file app.py yang secara otomatis akan menginisialisasi sistem kontrol utama AMRController:
 
 sudo python3 app.py
 
@@ -268,7 +268,7 @@ Buka peramban web (Google Chrome / Mozilla Firefox) di tablet HMI atau laptop ya
 http://<IP_ROBOT_AMR>:5050
 
 
-Operasional:
+4. Operasional:
 
 Klik tombol RECONNECT HARDWARE di bagian bawah telemetry panel untuk menyinkronkan koneksi DAC dan I/O controller.
 

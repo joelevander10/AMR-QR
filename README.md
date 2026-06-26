@@ -22,7 +22,7 @@ Repositori ini berisi sistem navigasi otonom berbasis QR Code, integrasi Sensor 
 
 - 🚀 Panduan Instalasi & Cara Menjalankan
 
-- 🏗️ Arsitektur Sistem & Aliran Data
+# 🏗️ Arsitektur Sistem & Aliran Data
 
 Sistem AMR ini mengintegrasikan pemrosesan citra komputer (Computer Vision), kendali PID pergerakan motor diferensial, pembacaan umpan balik odometri (Trackless/CANopen Encoder), serta sistem keselamatan LiDAR berbasis ROS.
 
@@ -40,7 +40,7 @@ Sistem AMR ini mengintegrasikan pemrosesan citra komputer (Computer Vision), ken
 (Analog)   (ROS)     (CAN / Serial)
 
 
-📁 Struktur Direktori Proyek
+# 📁 Struktur Direktori Proyek
 
 Agar aplikasi Flask dan pengontrol dapat berjalan dengan lancar, pastikan struktur berkas di dalam repositori Anda disusun seperti berikut:
 
@@ -55,23 +55,23 @@ amr-navigation-system/
 └── encoder_idset.py       # Utilitas Konfigurasi ID Encoder CANopen
 
 
-📂 Penjelasan Berkas & Komponen
+# 📂 Penjelasan Berkas & Komponen
 
 1. amr_controller.py (Otak Utama AMR)
 
 Bertindak sebagai Main Controller yang mengatur logika navigasi otonom dan manual, state machine robot, serta antarmuka dengan modul perangkat keras fisik.
 
-Fungsi Utama:
+- Fungsi Utama:
 
-Menginisialisasi Node ROS (amr_controller) untuk berlangganan data sensor LiDAR SICK.
+        - Menginisialisasi Node ROS (amr_controller) untuk berlangganan data sensor LiDAR SICK.
 
-Menjalankan thread kamera latar belakang (start_camera_thread) yang mengaktifkan sistem visi.
+        - Menjalankan thread kamera latar belakang (start_camera_thread) yang mengaktifkan sistem visi.
 
-Menghubungkan driver I/O Digital (CK5162E) dan Analog DAC (CKDA08ETH) untuk menggerakkan roda motor BLDC 400W secara diferensial.
+        - Menghubungkan driver I/O Digital (CK5162E) dan Analog DAC (CKDA08ETH) untuk menggerakkan roda motor BLDC 400W secara diferensial.
 
-Memproses tombol fisik industri (E-Stop pada DI0, Start Auto pada DI1, Stop Auto pada DI2) dengan algoritma debouncing.
+        - Memproses tombol fisik industri (E-Stop pada DI0, Start Auto pada DI1, Stop Auto pada DI2) dengan algoritma debouncing.
 
-Mendukung kendali jarak jauh via protokol broker MQTT untuk integrasi dengan Warehouse Management System (WMS).
+        - Mendukung kendali jarak jauh via protokol broker MQTT untuk integrasi dengan Warehouse Management System (WMS).
 
 2. amr_qr_nav.py (Sistem Visi Kamera & Deteksi QR)
 

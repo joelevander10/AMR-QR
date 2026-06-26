@@ -77,7 +77,7 @@ Bertindak sebagai Main Controller yang mengatur logika navigasi otonom dan manua
 
 Modul ini menangani pemrosesan citra dari kamera bawah yang mengarah ke lantai untuk mencari markah jalan berupa QR Code.
 
-Fungsi Utama:
+- Fungsi Utama:
 
   - Menggunakan OpenCV (cv2.QRCodeDetector) untuk menangkap frame kamera dan mendekode isi QR Code.
 
@@ -93,79 +93,79 @@ Menyediakan visualisasi overlay (menggambar kotak batas QR, sumbu koordinat, ara
 
 Aplikasi berbasis Flask yang menjembatani kontrol internal robot dengan antarmuka pengguna (HMI).
 
-Fungsi Utama:
+- Fungsi Utama:
 
-Monkey Patching: Melakukan modifikasi dinamis pada metode IntegratedQRSystem.process_stream agar frame kamera yang sedang diproses oleh detektor QR dapat disalurkan secara simultan ke web browser dalam format MJPEG Stream (/video_feed).
+  - Monkey Patching: Melakukan modifikasi dinamis pada metode IntegratedQRSystem.process_stream agar frame kamera yang sedang diproses oleh detektor QR dapat disalurkan secara simultan ke web browser dalam format MJPEG Stream (/video_feed).
 
-Menyediakan API RESTful untuk memantau status telemetri robot secara real-time (/api/status), memicu koneksi hardware (/api/connect), memicu E-stop soft (/api/estop), mengubah mode kerja (/api/mode), dan mengontrol pergerakan manual (/api/manual/move & /api/manual/stop).
+  - Menyediakan API RESTful untuk memantau status telemetri robot secara real-time (/api/status), memicu koneksi hardware (/api/connect), memicu E-stop soft (/api/estop), mengubah mode kerja (/api/mode), dan mengontrol pergerakan manual (/api/manual/move & /api/manual/stop).
 
 4. templates/index.html (HMI Dashboard Web)
 
 Halaman depan (Front-end) web dashboard modern berbasis Bootstrap 5 dan Font Awesome dengan gaya bertema gelap (dark mode) yang dioptimalkan untuk layar tablet industri / IPC (Industrial PC) pada bodi AMR.
 
-Fungsi Utama:
+- Fungsi Utama:
 
-Menampilkan video feed real-time dengan overlay hasil deteksi QR.
+  - Menampilkan video feed real-time dengan overlay hasil deteksi QR.
 
-Menyajikan widget visualisasi status kritis: E-Stop State, Mode Navigasi, Jarak LiDAR SICK, Posisi Odometri (Encoder Kiri/Kanan), IMU Yaw, dan nilai deviasi sumbu QR ($X$ & $Y$ dalam satuan cm).
+  - Menyajikan widget visualisasi status kritis: E-Stop State, Mode Navigasi, Jarak LiDAR SICK, Posisi Odometri (Encoder Kiri/Kanan), IMU Yaw, dan nilai deviasi sumbu QR ($X$ & $Y$ dalam satuan cm).
 
-Menyediakan panel kontrol manual berupa digital virtual joystick yang mendukung event sentuh (touch events) untuk pengoperasian langsung di lapangan.
+  - Menyediakan panel kontrol manual berupa digital virtual joystick yang mendukung event sentuh (touch events) untuk pengoperasian langsung di lapangan.
 
 5. encoder_idset.py (Utilitas Konfigurasi ID Encoder)
 
 Skrip bantu mandiri yang digunakan saat proses komisioning awal atau perawatan hardware encoder roda.
 
-Fungsi Utama:
+- Fungsi Utama:
 
-Berkomunikasi via protokol CANopen menggunakan library canopen melalui adapter USB-to-CAN SLCAN (/dev/ttyACM0).
+  - Berkomunikasi via protokol CANopen menggunakan library canopen melalui adapter USB-to-CAN SLCAN (/dev/ttyACM0).
 
-Memindahkan Node ID Encoder dari ID default pabrik (Node 1) ke Node ID target (Node 2) agar tidak bentrok pada jaringan bus CAN robot.
+  - Memindahkan Node ID Encoder dari ID default pabrik (Node 1) ke Node ID target (Node 2) agar tidak bentrok pada jaringan bus CAN robot.
 
-Menyimpan perubahan konfigurasi ke dalam EEPROM internal encoder secara permanen dengan mengirimkan tanda khusus save (0x65766173) pada indeks Object Dictionary 0x1010:01.
+  - Menyimpan perubahan konfigurasi ke dalam EEPROM internal encoder secara permanen dengan mengirimkan tanda khusus save (0x65766173) pada indeks Object Dictionary 0x1010:01.
 
 6. Encoder_.eds (Electronic Data Sheet CANopen)
 
 Berkas konfigurasi standar yang mendeskripsikan struktur Object Dictionary dari encoder roda CANopen (seri AM50).
 
-Fungsi Utama:
+- Fungsi Utama:
 
-Digunakan oleh encoder_idset.py dan kelas TracklessSystem untuk memetakan alamat memori internal encoder, seperti pembacaan posisi nilai encoder (0x6004), konfigurasi baudrate (0x2003), dan pengaturan Node ID (0x2004).
+  - Digunakan oleh encoder_idset.py dan kelas TracklessSystem untuk memetakan alamat memori internal encoder, seperti pembacaan posisi nilai encoder (0x6004), konfigurasi baudrate (0x2003), dan pengaturan Node ID (0x2004).
 
-⚙️ Mekanisme Kontrol Navigasi & Sensor Fusion
+# ⚙️ Mekanisme Kontrol Navigasi & Sensor Fusion
 
-A. Logika Penyelarasan (Alignment)
+## A. Logika Penyelarasan (Alignment)
 
 Saat robot mendekati QR Code baru, ia akan melakukan beberapa tahapan penyelarasan posisi sebelum mengeksekusi instruksi pergerakan selanjutnya:
 
-Koreksi Geser Samping (Sumbu Y): Jika error $y$ di luar batas toleransi deadzone_y ($25\text{ px}$), AMR akan masuk ke mode ALIGN_Y menggunakan sistem pergerakan pulsa (pulse-move) demi menghindari slip pada roda.
+1. Koreksi Geser Samping (Sumbu Y): Jika error $y$ di luar batas toleransi deadzone_y ($25\text{ px}$), AMR akan masuk ke mode ALIGN_Y menggunakan sistem pergerakan pulsa (pulse-move) demi menghindari slip pada roda.
 
-Koreksi Rotasi Kasar (Sudut Ekstrem > 30°): Jika sudut kemiringan $\theta > 30^\circ$, robot akan mengeksekusi rotasi cepat searah jarum jam atau berlawanan arah lewat mode ALIGN_LARGE_ROTATION. Target sudut ditentukan secara dinamis menggunakan rumus:
+2. Koreksi Rotasi Kasar (Sudut Ekstrem > 30°): Jika sudut kemiringan $\theta > 30^\circ$, robot akan mengeksekusi rotasi cepat searah jarum jam atau berlawanan arah lewat mode ALIGN_LARGE_ROTATION. Target sudut ditentukan secara dinamis menggunakan rumus:
 
 $$\theta_{\text{target}} = \text{clamp}(|\theta| - 10^\circ, \, \text{min}=30^\circ, \, \text{max}=170^\circ)$$
 
-Koreksi Rotasi Halus (Sudut Kecil < 30°): Robot bergerak presisi dalam mode ALIGN_ROTATION secara perlahan agar sumbu hadap lurus tegak terhadap marka lantai.
+3. Koreksi Rotasi Halus (Sudut Kecil < 30°): Robot bergerak presisi dalam mode ALIGN_ROTATION secara perlahan agar sumbu hadap lurus tegak terhadap marka lantai.
 
-Proteksi Anti-Osilasi: Jika robot terdeteksi berosilasi bolak-balik melewati batas deadzone lebih dari 10 kali (OSCILLATION_MAX), sistem akan secara otomatis melompati fase alignment dan langsung mengeksekusi perintah gerak berikutnya untuk efisiensi waktu kerja.
+4. Proteksi Anti-Osilasi: Jika robot terdeteksi berosilasi bolak-balik melewati batas deadzone lebih dari 10 kali (OSCILLATION_MAX), sistem akan secara otomatis melompati fase alignment dan langsung mengeksekusi perintah gerak berikutnya untuk efisiensi waktu kerja.
 
-B. Kontrol Jalur S-Curve Lintasan (EXECUTE_MOVE)
+## B. Kontrol Jalur S-Curve Lintasan (EXECUTE_MOVE)
 
 Saat bergerak maju antar-QR, robot menggunakan S-Curve lateral correction berbasis Sensor Fusion untuk memastikan gerakan berjalan lurus secara presisi:
 
-Deviasi posisi awal sumbu $X$ dari QR diubah menjadi parameter offset awal lintasan ($scurve\_offset\_cm$).
+- Deviasi posisi awal sumbu $X$ dari QR diubah menjadi parameter offset awal lintasan ($scurve\_offset\_cm$).
 
-Target sudut dinamis ($\theta_{\text{target}}$) dikalkulasi sepanjang jarak tempuh ($x$) menggunakan turunan pertama kurva polinomial:
+- Target sudut dinamis ($\theta_{\text{target}}$) dikalkulasi sepanjang jarak tempuh ($x$) menggunakan turunan pertama kurva polinomial:
 
 $$y'(x) = \frac{6 \cdot \text{offset}}{\text{active\_dist}} \left( \frac{x}{\text{active\_dist}} - \left(\frac{x}{\text{active\_dist}}\right)^2 \right)$$
 
 $$\theta_{\text{target}}(x) = \arctan(y'(x))$$
 
-Deviasi aktual didapatkan dari gabungan sensor IMU Yaw dan selisih pembacaan Encoder roda kiri-kanan:
+- Deviasi aktual didapatkan dari gabungan sensor IMU Yaw dan selisih pembacaan Encoder roda kiri-kanan:
 
 $$u(t) = K_{p} \cdot e_{\theta}(t) + K_{i} \cdot \int e_{\theta}(t)\,dt + K_{d} \cdot \frac{de_{\theta}(t)}{dt} + K_{p\_enc} \cdot e_{\text{encoder}}(t)$$
 
-Sinyal koreksi kontrol $u(t)$ diumpankan balik untuk membedakan voltase kecepatan motor kiri dan motor kanan.
+- Sinyal koreksi kontrol $u(t)$ diumpankan balik untuk membedakan voltase kecepatan motor kiri dan motor kanan.
 
-🛡️ Sistem Keselamatan LiDAR (SICK Nano)
+# 🛡️ Sistem Keselamatan LiDAR (SICK Nano)
 
 AMR dilengkapi dengan sensor keselamatan laser scanner LiDAR SICK yang terintegrasi melalui ROS (Robot Operating System) pada topik /sick_safetyscanners/scan.
 

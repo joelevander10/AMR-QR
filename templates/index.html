@@ -51,7 +51,6 @@
         }
         .sensor-box span { display: block; font-size: 0.8rem; color: #888; margin-bottom: 4px; }
 
-        /* Lidar safety badge */
         .lidar-badge {
             display: inline-block; padding: 3px 10px; border-radius: 3px;
             font-family: 'Roboto Mono', monospace; font-weight: bold;
@@ -63,7 +62,6 @@
                       animation: blink 0.5s step-start infinite; }
         @keyframes blink { 50% { opacity: 0.3; } }
 
-        /* ESTOP aktif — tombol dan status bar */
         .estop-active-btn {
             background: repeating-linear-gradient(45deg, #ff0000, #ff0000 10px, #cc0000 10px, #cc0000 20px) !important;
             box-shadow: 0 0 30px rgba(255,0,0,0.9) !important;
@@ -84,13 +82,36 @@
             border-color: var(--terminal-green) !important;
             color: var(--terminal-green) !important;
         }
+
+        /* Settings link button di navbar */
+        .btn-settings {
+            background: transparent;
+            border: 1px solid #555;
+            color: #aaa;
+            border-radius: 3px;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.75rem;
+            padding: 4px 12px;
+            text-decoration: none;
+            transition: all 0.2s;
+            letter-spacing: 0.5px;
+        }
+        .btn-settings:hover {
+            border-color: var(--accent-orange);
+            color: var(--accent-orange);
+        }
     </style>
 </head>
 <body>
 <nav class="navbar navbar-dark mb-4">
     <div class="container-fluid">
         <a class="navbar-brand" href="#"><i class="fas fa-industry me-2"></i>AMR CONTROLLER</a>
-        <span class="badge bg-danger rounded-0" id="conn-status">OFFLINE</span>
+        <div class="d-flex align-items-center gap-3">
+            <a href="/settings" class="btn-settings">
+                <i class="fas fa-sliders-h me-1"></i>PARAMETERS
+            </a>
+            <span class="badge bg-danger rounded-0" id="conn-status">OFFLINE</span>
+        </div>
     </div>
 </nav>
 
@@ -114,8 +135,6 @@
                 </div>
                 <div class="card-footer d-flex justify-content-between align-items-center">
                     <small>CMD: <span id="qr-cmd" style="color:var(--accent-orange); font-weight:bold;">NONE</span></small>
-
-                    <!-- LIDAR SAFETY PANEL (compact, di footer kamera) -->
                     <div class="d-flex align-items-center gap-3">
                         <small class="text-muted">LIDAR</small>
                         <span id="lidar-dist-val" class="status-val val-info">-- cm</span>
@@ -127,7 +146,7 @@
 
             <!-- LIDAR SAFETY DETAIL CARD -->
             <div class="card">
-                <div class="card-header"><i class="fas fa-shield-alt me-2"></i>SAFETY LIDAR — SICK Nano (Zona -30°~+30°)</div>
+                <div class="card-header"><i class="fas fa-shield-alt me-2"></i>SAFETY LIDAR — SICK Nano</div>
                 <div class="card-body">
                     <div class="row g-2">
                         <div class="col-4">
@@ -267,11 +286,20 @@
                         <div></div>
                     </div>
 
-                    <!-- Indikator status ESTOP — di bawah joystick -->
                     <div id="estop-status-bar" class="text-center mt-3 py-2 rounded-2"
                          style="background:#1a1a1a; border:2px solid #444; font-family:'Roboto Mono',monospace; font-weight:bold; letter-spacing:1px; font-size:0.85rem; color:#555;">
                         <i class="fas fa-circle me-2"></i>EMERGENCY : STANDBY
                     </div>
+                </div>
+            </div>
+
+            <!-- Quick shortcut ke Settings -->
+            <div class="card">
+                <div class="card-body p-2 text-center">
+                    <a href="/settings" style="color:#555; font-family:'Roboto Mono',monospace; font-size:0.75rem; text-decoration:none;">
+                        <i class="fas fa-sliders-h me-2"></i>Buka Parameter Settings
+                        <i class="fas fa-external-link-alt ms-2" style="font-size:0.65rem;"></i>
+                    </a>
                 </div>
             </div>
         </div>
@@ -301,14 +329,12 @@
 
     function updateLidar(lidar) {
         if (!lidar) return;
+        const distCm = lidar.dist_cm;
+        const isStop = lidar.is_stop;
+        const isSlow = lidar.is_slow;
+        const rays   = lidar.active_rays;
+        const zone   = lidar.zone_deg;
 
-        const distCm   = lidar.dist_cm;
-        const isStop   = lidar.is_stop;
-        const isSlow   = lidar.is_slow;
-        const rays     = lidar.active_rays;
-        const zone     = lidar.zone_deg;
-
-        // Nilai jarak
         const distText = distCm >= 999 ? '-- cm' : distCm.toFixed(1) + ' cm';
         document.getElementById('lidar-dist-val').innerText    = distText;
         document.getElementById('lidar-dist-detail').innerText = distText;
@@ -316,27 +342,22 @@
         document.getElementById('lidar-rays').innerText        = rays;
         document.getElementById('lidar-rays-detail').innerText = rays;
 
-        // Badge status
         const badge = document.getElementById('lidar-status-badge');
         if (isStop) {
-            badge.className  = 'lidar-badge lidar-stop';
-            badge.innerText  = '⛔ STOP';
+            badge.className = 'lidar-badge lidar-stop'; badge.innerText = '⛔ STOP';
         } else if (isSlow) {
-            badge.className  = 'lidar-badge lidar-slow';
-            badge.innerText  = '⚠ SLOW';
+            badge.className = 'lidar-badge lidar-slow'; badge.innerText = '⚠ SLOW';
         } else {
-            badge.className  = 'lidar-badge lidar-ok';
-            badge.innerText  = '✔ OK';
+            badge.className = 'lidar-badge lidar-ok';  badge.innerText = '✔ OK';
         }
 
-        // Threshold detail
         const slowEl = document.getElementById('lidar-slow-status');
-        slowEl.innerText  = isSlow ? '⚠ OBSTACLE' : 'CLEAR';
-        slowEl.className  = 'status-val ' + (isSlow ? 'val-warning' : 'val-ok');
+        slowEl.innerText = isSlow ? '⚠ OBSTACLE' : 'CLEAR';
+        slowEl.className = 'status-val ' + (isSlow ? 'val-warning' : 'val-ok');
 
         const stopEl = document.getElementById('lidar-stop-status');
-        stopEl.innerText  = isStop ? '⛔ STOP!' : 'CLEAR';
-        stopEl.className  = 'status-val ' + (isStop ? 'val-danger' : 'val-ok');
+        stopEl.innerText = isStop ? '⛔ STOP!' : 'CLEAR';
+        stopEl.className = 'status-val ' + (isStop ? 'val-danger' : 'val-ok');
     }
 
     setInterval(async () => {
@@ -344,32 +365,26 @@
             const res  = await fetch('/api/status');
             const data = await res.json();
 
-            // Status utama
-            document.getElementById('conn-status').innerText   = data.connected ? "ONLINE" : "OFFLINE";
-            document.getElementById('conn-status').className   = data.connected ? "badge bg-success" : "badge bg-danger rounded-0";
-            document.getElementById('sys-mode').innerText      = data.mode;
-            document.getElementById('nav-mode').innerText      = data.nav_mode;
-            document.getElementById('nav-detail').innerText    = data.nav_status_detail;
-            document.getElementById('qr-cmd').innerText        = data.last_cmd;
+            document.getElementById('conn-status').innerText = data.connected ? "ONLINE" : "OFFLINE";
+            document.getElementById('conn-status').className = data.connected ? "badge bg-success" : "badge bg-danger rounded-0";
+            document.getElementById('sys-mode').innerText    = data.mode;
+            document.getElementById('nav-mode').innerText    = data.nav_mode;
+            document.getElementById('nav-detail').innerText  = data.nav_status_detail;
+            document.getElementById('qr-cmd').innerText      = data.last_cmd;
 
-            // ESTOP
             updateEstop(data.estop);
-
-            // Lidar
             updateLidar(data.lidar);
 
-            // Vision
             const v = data.vision_error;
             document.getElementById('vision-data').innerText = `PX: X:${v.x} Y:${v.y} A:${v.angle.toFixed(1)}`;
             document.getElementById('offset-cm').innerText   = `X: ${v.x_cm} cm | Y: ${v.y_cm} cm`;
 
-            // Sensor fusion
             if (data.trackless) {
                 const t = data.trackless;
-                document.getElementById('imu-yaw').innerText      = t.yaw.toFixed(2) + '°';
-                document.getElementById('target-yaw').innerText   = t.target_yaw.toFixed(2) + '°';
-                document.getElementById('enc-l').innerText        = t.enc_l.toFixed(1) + ' cm';
-                document.getElementById('enc-r').innerText        = t.enc_r.toFixed(1) + ' cm';
+                document.getElementById('imu-yaw').innerText       = t.yaw.toFixed(2) + '°';
+                document.getElementById('target-yaw').innerText    = t.target_yaw.toFixed(2) + '°';
+                document.getElementById('enc-l').innerText         = t.enc_l.toFixed(1) + ' cm';
+                document.getElementById('enc-r').innerText         = t.enc_r.toFixed(1) + ' cm';
                 document.getElementById('dist-traveled').innerText = t.dist_traveled.toFixed(1) + ' cm';
             } else {
                 ['imu-yaw','target-yaw','enc-l','enc-r','dist-traveled'].forEach(id => {
@@ -377,15 +392,12 @@
                 });
             }
 
-            // Tombol mode
             document.getElementById('btn-manual').className = data.mode === 'MANUAL'
                 ? 'btn btn-secondary active' : 'btn btn-outline-secondary';
             document.getElementById('btn-auto').className = data.mode === 'AUTO'
                 ? 'btn btn-warning active text-dark fw-bold' : 'btn btn-outline-warning';
 
-        } catch (e) {
-            console.error("Connection to server lost.", e);
-        }
+        } catch (e) { console.error("Connection to server lost.", e); }
     }, 200);
 </script>
 </body>

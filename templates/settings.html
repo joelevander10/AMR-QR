@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AMR PARAMETER SETTINGS</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark:        #0d0d0d;
+            --panel-bg:       #161616;
+            --panel-border:   #2a2a2a;
+            --accent-orange:  #ff9800;
+            --accent-cyan:    #00d2ff;
+            --terminal-green: #00ff41;
+            --accent-red:     #ff4444;
+            --input-bg:       #0a0a0a;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg-dark);
+            color: #d0d0d0;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.82rem;
+            padding-bottom: 60px;
+        }
+
+        /* ── NAV ── */
+        .topbar {
+            background: #000;
+            border-bottom: 2px solid var(--accent-orange);
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .topbar-title { color: var(--accent-orange); font-weight: 700; font-size: 1rem; letter-spacing: 2px; }
+        .topbar a { color: #aaa; text-decoration: none; font-size: 0.78rem; }
+        .topbar a:hover { color: var(--accent-cyan); }
+
+        /* ── SECTION CARD ── */
+        .param-section {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 4px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+        .param-section-header {
+            background: #1c1c1c;
+            border-bottom: 1px solid var(--panel-border);
+            padding: 8px 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 700;
+            font-size: 0.78rem;
+            letter-spacing: 1.5px;
+            color: var(--accent-cyan);
+        }
+        .param-section-header i { color: var(--accent-orange); width: 16px; }
+
+        /* ── PARAM ROW ── */
+        .param-row {
+            display: grid;
+            grid-template-columns: 200px 120px 1fr;
+            align-items: center;
+            gap: 10px;
+            padding: 7px 14px;
+            border-bottom: 1px solid #1a1a1a;
+            transition: background 0.15s;
+        }
+        .param-row:last-child { border-bottom: none; }
+        .param-row:hover { background: #1a1a1a; }
+
+        .param-label {
+            color: #aaa;
+            font-size: 0.78rem;
+        }
+        .param-label small {
+            display: block;
+            color: #555;
+            font-size: 0.68rem;
+            margin-top: 1px;
+        }
+
+        .param-input {
+            background: var(--input-bg);
+            border: 1px solid #333;
+            border-radius: 3px;
+            color: var(--terminal-green);
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 700;
+            padding: 5px 8px;
+            width: 100%;
+            text-align: right;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .param-input:focus {
+            outline: none;
+            border-color: var(--accent-orange);
+            box-shadow: 0 0 0 2px rgba(255,152,0,0.15);
+        }
+        .param-input.modified {
+            border-color: var(--accent-orange);
+            color: var(--accent-orange);
+        }
+        .param-input.saved {
+            border-color: var(--terminal-green);
+            color: var(--terminal-green);
+            animation: flash-green 0.5s ease;
+        }
+        .param-input.error {
+            border-color: var(--accent-red);
+            color: var(--accent-red);
+        }
+        @keyframes flash-green {
+            0%   { box-shadow: 0 0 8px var(--terminal-green); }
+            100% { box-shadow: none; }
+        }
+
+        select.param-input {
+            cursor: pointer;
+        }
+
+        .param-desc {
+            color: #444;
+            font-size: 0.70rem;
+            line-height: 1.3;
+        }
+
+        /* ── RANGE SLIDER COMBO ── */
+        .slider-combo {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .slider-combo input[type=range] {
+            flex: 1;
+            accent-color: var(--accent-orange);
+        }
+        .slider-num {
+            background: var(--input-bg);
+            border: 1px solid #333;
+            border-radius: 3px;
+            color: var(--terminal-green);
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.82rem;
+            font-weight: 700;
+            padding: 4px 6px;
+            width: 70px;
+            text-align: right;
+        }
+
+        /* ── TOAST ── */
+        #toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #1a1a1a;
+            border: 1px solid var(--terminal-green);
+            border-radius: 4px;
+            padding: 10px 18px;
+            color: var(--terminal-green);
+            font-size: 0.80rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            z-index: 9999;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.25s, transform 0.25s;
+            max-width: 340px;
+        }
+        #toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        #toast.error {
+            border-color: var(--accent-red);
+            color: var(--accent-red);
+        }
+
+        /* ── APPLY BAR ── */
+        .apply-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #0a0a0a;
+            border-top: 2px solid var(--accent-orange);
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            z-index: 99;
+        }
+        .apply-bar .hint { color: #555; font-size: 0.72rem; }
+        .apply-bar .hint span { color: var(--accent-orange); }
+
+        .btn-apply {
+            background: var(--accent-orange);
+            color: #000;
+            border: none;
+            border-radius: 3px;
+            font-family: 'Roboto Mono', monospace;
+            font-weight: 700;
+            font-size: 0.82rem;
+            letter-spacing: 1px;
+            padding: 8px 24px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-apply:hover { background: #ffb74d; }
+        .btn-apply:disabled { background: #444; color: #777; cursor: not-allowed; }
+
+        .btn-reload {
+            background: transparent;
+            color: #777;
+            border: 1px solid #333;
+            border-radius: 3px;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.78rem;
+            padding: 7px 14px;
+            cursor: pointer;
+            transition: color 0.2s, border-color 0.2s;
+        }
+        .btn-reload:hover { color: var(--accent-cyan); border-color: var(--accent-cyan); }
+
+        /* ── MODIFIED COUNT BADGE ── */
+        #mod-count {
+            background: var(--accent-orange);
+            color: #000;
+            font-weight: 700;
+            font-size: 0.72rem;
+            padding: 2px 7px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        /* ── SECTION TABS ── */
+        .section-tabs {
+            display: flex;
+            gap: 6px;
+            padding: 12px 0 4px;
+            flex-wrap: wrap;
+        }
+        .tab-btn {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 3px;
+            color: #666;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.72rem;
+            padding: 4px 12px;
+            cursor: pointer;
+            transition: all 0.15s;
+            letter-spacing: 0.5px;
+        }
+        .tab-btn:hover { border-color: #666; color: #aaa; }
+        .tab-btn.active { background: var(--accent-orange); border-color: var(--accent-orange); color: #000; font-weight: 700; }
+
+        /* ── LOADING ── */
+        #loading-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.7);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 999;
+            font-size: 1rem;
+            color: var(--accent-cyan);
+            letter-spacing: 2px;
+        }
+        #loading-overlay.hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<!-- NAV -->
+<div class="topbar">
+    <div class="topbar-title"><i class="fas fa-sliders-h me-2"></i>AMR PARAMETER SETTINGS</div>
+    <div class="d-flex align-items-center gap-3">
+        <span id="mod-count">0 CHANGES</span>
+        <a href="/"><i class="fas fa-arrow-left me-1"></i>BACK TO HMI</a>
+    </div>
+</div>
+
+<!-- LOADING -->
+<div id="loading-overlay">
+    <i class="fas fa-circle-notch fa-spin me-3"></i> LOADING PARAMETERS...
+</div>
+
+<div class="container-fluid px-3 pt-3">
+
+    <!-- QUICK JUMP TABS -->
+    <div class="section-tabs">
+        <button class="tab-btn active" onclick="scrollTo('sec-vision')">VISION</button>
+        <button class="tab-btn" onclick="scrollTo('sec-speed')">SPEED</button>
+        <button class="tab-btn" onclick="scrollTo('sec-dist')">DISTANCE</button>
+        <button class="tab-btn" onclick="scrollTo('sec-align')">ALIGN PULSE</button>
+        <button class="tab-btn" onclick="scrollTo('sec-rot')">ROTATION</button>
+        <button class="tab-btn" onclick="scrollTo('sec-pid')">PID</button>
+        <button class="tab-btn" onclick="scrollTo('sec-trim')">TRIM & DIR</button>
+        <button class="tab-btn" onclick="scrollTo('sec-lidar')">LIDAR SAFETY</button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- SECTION: VISION                                     -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <div class="param-section" id="sec-vision">
+        <div class="param-section-header">
+            <i class="fas fa-qrcode"></i> VISION / QR DETECTION
+        </div>
+
+        <div class="param-row">
+            <div class="param-label">QR Real Size<small>Ukuran fisik QR (mm)</small></div>
+            <input class="param-input" type="number" step="0.1" id="QR_REAL_SIZE_MM" data-unit="mm">
+            <div class="param-desc">Ukuran sisi QR code yang dicetak di lantai. Digunakan untuk menghitung jarak X/Y dalam mm dari lebar pixel.</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- SECTION: SPEED                                      -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <div class="param-section" id="sec-speed">
+        <div class="param-section-header">
+            <i class="fas fa-tachometer-alt"></i> KECEPATAN MOTOR (Volt)
+        </div>
+
+        <div class="param-row">
+            <div class="param-label">V Cruise<small>Kecepatan jelajah (V)</small></div>
+            <input class="param-input" type="number" step="0.05" min="0" max="5" id="V_CRUISE_V">
+            <div class="param-desc">Kecepatan penuh saat EXECUTE_MOVE fase cruise. Pengaruh besar ke waktu tempuh antar QR.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">V Approach<small>Kecepatan pendekatan (V)</small></div>
+            <input class="param-input" type="number" step="0.05" min="0" max="5" id="V_APPROACH_V">
+            <div class="param-desc">Referensi kecepatan pendekatan — saat ini dipakai sebagai referensi internal.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">V Stall<small>Kecepatan minimum (V)</small></div>
+            <input class="param-input" type="number" step="0.05" min="0" max="2" id="V_STALL_V">
+            <div class="param-desc">Voltase minimum agar motor tidak stall. Awal akselerasi dan batas bawah stall limiter.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">V Align (Rotation)<small>Pulse align sudut (V)</small></div>
+            <input class="param-input" type="number" step="0.05" min="0" max="2" id="V_ALIGN_V">
+            <div class="param-desc">Kecepatan pulse ALIGN_ROTATION dan ALIGN_Y saat dekat deadzone.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">V Align Y Fast<small>Align Y saat jauh (V)</small></div>
+            <input class="param-input" type="number" step="0.05" min="0" max="3" id="V_ALIGN_Y_FAST_V">
+            <div class="param-desc">Kecepatan ALIGN_Y saat error Y besar (> ALIGN_Y_FAST_ZONE px). Makin besar = makin cepat koreksi Y.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">V Post Rotation<small>Creep setelah rotasi (V)</small></div>
+            <input class="param-input" type="number" step="0.05" min="0" max="2" id="V_POST_ROT_V">
+            <div class="param-desc">Kecepatan maju/mundur POST_ROT_CREEP untuk cari QR setelah rotasi besar.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">V Creep<small>Kecepatan scan QR (V)</small></div>
+            <input class="param-input" type="number" step="0.05" min="0" max="2" id="CREEP_SPEED_V">
+            <div class="param-desc">Kecepatan saat memasuki zona CREEP (dekat target QR berikutnya). Harus cukup pelan untuk scan QR akurat.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Limit Linear<small>Batas maks linear (V)</small></div>
+            <input class="param-input" type="number" step="0.05" min="0" max="5" id="LIMIT_SPD_LINEAR_V">
+            <div class="param-desc">Hard limit kecepatan gerak lurus. Motor tidak akan melebihi nilai ini meskipun PID memberikan output lebih besar.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Limit Rotation<small>Batas maks rotasi (V)</small></div>
+            <input class="param-input" type="number" step="0.05" min="0" max="5" id="LIMIT_SPD_ROTATION_V">
+            <div class="param-desc">Hard limit kecepatan rotasi (saat kiri dan kanan berlawanan arah).</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- SECTION: DISTANCE                                   -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <div class="param-section" id="sec-dist">
+        <div class="param-section-header">
+            <i class="fas fa-ruler-horizontal"></i> PROFIL JARAK NAVIGASI (cm)
+        </div>
+
+        <div class="param-row">
+            <div class="param-label">Target Jarak<small>Jarak antar QR (cm)</small></div>
+            <input class="param-input" type="number" step="1" min="0" id="TARGET_X_DIST_CM">
+            <div class="param-desc">Jarak nominal antar QR marker di lantai. S-curve dihitung dari nilai ini.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Accel Distance<small>Jarak akselerasi (cm)</small></div>
+            <input class="param-input" type="number" step="1" min="0" id="ACCEL_DIST_CM">
+            <div class="param-desc">AMR ramp-up dari V_STALL ke V_CRUISE dalam jarak ini. Lebih panjang = akselerasi lebih halus.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Decel Start<small>Mulai deselerasi (cm)</small></div>
+            <input class="param-input" type="number" step="1" min="0" id="DECEL_START_CM">
+            <div class="param-desc">AMR mulai menurunkan kecepatan dari titik ini. Lebih awal = lebih smooth, lebih lambat tiba.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Creep Start<small>Masuk zona creep (cm)</small></div>
+            <input class="param-input" type="number" step="1" min="0" id="CREEP_START_CM">
+            <div class="param-desc">Di titik ini kecepatan sudah sangat rendah dan kamera aktif scan QR untuk berhenti.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Hard Stop<small>Berhenti paksa (cm)</small></div>
+            <input class="param-input" type="number" step="1" min="0" id="HARD_STOP_CM">
+            <div class="param-desc">AMR berhenti paksa di sini jika QR tidak terbaca. Harus sedikit lebih dari Creep Start.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Correction Dist<small>Batas koreksi PID (cm)</small></div>
+            <input class="param-input" type="number" step="1" min="0" id="CORRECTION_DIST_CM">
+            <div class="param-desc">PID S-curve aktif koreksi arah sampai jarak ini. Setelahnya target_yaw kembali ke 0.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Track Width<small>Jarak antar roda (mm)</small></div>
+            <input class="param-input" type="number" step="1" min="0" id="TRACK_WIDTH_MM">
+            <div class="param-desc">Jarak pusat ke pusat roda kiri-kanan. Digunakan untuk menghitung yaw dari selisih encoder.</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- SECTION: ALIGN PULSE                                -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <div class="param-section" id="sec-align">
+        <div class="param-section-header">
+            <i class="fas fa-crosshairs"></i> ALIGN PULSE & VISION DEADZONE
+        </div>
+
+        <div class="param-row">
+            <div class="param-label">Pulse Move Duration<small>Durasi gerak pulse (s)</small></div>
+            <input class="param-input" type="number" step="0.05" min="0.05" max="2" id="ALIGN_MOVE_DURATION">
+            <div class="param-desc">Lama motor bergerak dalam satu pulse ALIGN. Lebih lama = koreksi lebih besar per pulse.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Pulse Stop Duration<small>Jeda antar pulse (s)</small></div>
+            <input class="param-input" type="number" step="0.05" min="0.05" max="3" id="ALIGN_STOP_DURATION">
+            <div class="param-desc">Jeda berhenti antar pulse agar kamera sempat baca ulang posisi QR.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Align Y Fast Zone<small>Threshold kecepatan Y (px)</small></div>
+            <input class="param-input" type="number" step="5" min="0" max="500" id="ALIGN_Y_FAST_ZONE">
+            <div class="param-desc">Jika error Y (px) melebihi nilai ini, ALIGN_Y pakai kecepatan V_ALIGN_Y_FAST. Di bawah nilai ini, interpolasi ke V_ALIGN.</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- SECTION: ROTATION                                   -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <div class="param-section" id="sec-rot">
+        <div class="param-section-header">
+            <i class="fas fa-sync-alt"></i> ROTASI BESAR & QR SEARCH
+        </div>
+
+        <div class="param-row">
+            <div class="param-label">Brake Buffer<small>Kompensasi overshoot (°)</small></div>
+            <input class="param-input" type="number" step="0.5" min="0" max="20" id="BRAKE_BUFFER_DEG">
+            <div class="param-desc">AMR berhenti N° sebelum target agar momentum tidak overshoot. Naikkan jika masih overshoot.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">QR Timeout Search<small>Delay cari QR (s)</small></div>
+            <input class="param-input" type="number" step="0.5" min="0.5" max="30" id="QR_TIMEOUT_SEARCH">
+            <div class="param-desc">Setelah X detik tidak melihat QR, AMR mulai rotasi pencarian QR_SEARCH_ROTATION.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">QR Search Max Deg<small>Sudut maks cari QR (°)</small></div>
+            <input class="param-input" type="number" step="5" min="10" max="360" id="QR_SEARCH_MAX_DEG">
+            <div class="param-desc">Rotasi maksimal pencarian QR sebelum balik arah. Default 90°.</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- SECTION: PID                                        -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <div class="param-section" id="sec-pid">
+        <div class="param-section-header">
+            <i class="fas fa-wave-square"></i> PID — S-CURVE STEERING
+        </div>
+
+        <div class="param-row">
+            <div class="param-label">KP IMU<small>Proportional IMU</small></div>
+            <input class="param-input" type="number" step="0.01" min="0" id="KP_IMU">
+            <div class="param-desc">Gain proporsional error yaw IMU. Terlalu besar = osilasi steering.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">KI IMU<small>Integral IMU</small></div>
+            <input class="param-input" type="number" step="0.001" min="0" id="KI_IMU">
+            <div class="param-desc">Gain integral — menghilangkan offset steady-state. Hati-hati windup jika terlalu besar.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">KD IMU<small>Derivative IMU</small></div>
+            <input class="param-input" type="number" step="0.01" min="0" id="KD_IMU">
+            <div class="param-desc">Gain derivatif — meredam osilasi. Terlalu besar = respon kasar/noise.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">KP Encoder<small>Proportional Encoder</small></div>
+            <input class="param-input" type="number" step="0.005" min="0" id="KP_ENC">
+            <div class="param-desc">Gain proporsional dari error yaw encoder (cross-check dengan IMU).</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- SECTION: TRIM & DIRECTION                           -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <div class="param-section" id="sec-trim">
+        <div class="param-section-header">
+            <i class="fas fa-sliders-h"></i> TRIM MOTOR & ARAH KOREKSI
+        </div>
+
+        <div class="param-row">
+            <div class="param-label">Trim Kiri (Auto)<small>Faktor koreksi motor L</small></div>
+            <input class="param-input" type="number" step="0.01" min="0.5" max="1.5" id="TRIM_L_AUTO">
+            <div class="param-desc">Pengali output motor kiri di mode AUTO. Gunakan untuk kompensasi perbedaan mekanis antar motor.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Trim Kanan (Auto)<small>Faktor koreksi motor R</small></div>
+            <input class="param-input" type="number" step="0.01" min="0.5" max="1.5" id="TRIM_R_AUTO">
+            <div class="param-desc">Pengali output motor kanan di mode AUTO.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Dir Koreksi PID<small>Arah koreksi steering</small></div>
+            <select class="param-input" id="DIR_KOREKSI">
+                <option value="1">+1 (Normal)</option>
+                <option value="-1">-1 (Terbalik)</option>
+            </select>
+            <div class="param-desc">Jika AMR belok ke arah yang salah saat koreksi, ganti ke -1.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">IMU Direction<small>Tanda yaw IMU</small></div>
+            <select class="param-input" id="IMU_DIR">
+                <option value="1">+1 (Normal)</option>
+                <option value="-1">-1 (Terbalik)</option>
+            </select>
+            <div class="param-desc">Jika IMU memberikan yaw berlawanan arah, set ke -1.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Reverse Camera X<small>Flip sumbu X kamera</small></div>
+            <select class="param-input" id="REVERSE_CAMERA_X">
+                <option value="false">false (Normal)</option>
+                <option value="true">true (Terbalik)</option>
+            </select>
+            <div class="param-desc">Jika kamera dipasang terbalik (kiri-kanan), aktifkan ini agar error X dihitung benar.</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- SECTION: LIDAR SAFETY                               -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <div class="param-section" id="sec-lidar">
+        <div class="param-section-header">
+            <i class="fas fa-shield-alt"></i> LIDAR SAFETY — SICK Nano
+        </div>
+
+        <div class="param-row">
+            <div class="param-label">Stop Distance<small>Jarak berhenti (m)</small></div>
+            <input class="param-input" type="number" step="0.05" min="0.1" max="5" id="LIDAR_STOP_M">
+            <div class="param-desc">Jika obstacle ≤ nilai ini, motor berhenti penuh. Harus lebih kecil dari Slow Distance.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Slow Distance<small>Jarak perlambatan (m)</small></div>
+            <input class="param-input" type="number" step="0.05" min="0.1" max="10" id="LIDAR_SLOW_M">
+            <div class="param-desc">Jika obstacle ≤ nilai ini, motor melambat 50%. Harus lebih besar dari Stop Distance.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Angle Min<small>Batas sudut kiri (°)</small></div>
+            <input class="param-input" type="number" step="1" min="0" max="360" id="LIDAR_ANGLE_MIN">
+            <div class="param-desc">Sudut awal zona pantau lidar (dalam frame lidar). Sesuaikan dengan orientasi mounting lidar di AMR.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Angle Max<small>Batas sudut kanan (°)</small></div>
+            <input class="param-input" type="number" step="1" min="0" max="360" id="LIDAR_ANGLE_MAX">
+            <div class="param-desc">Sudut akhir zona pantau lidar. Zona aktif = ANGLE_MIN ~ ANGLE_MAX.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Range Min Valid<small>Filter noise dekat (m)</small></div>
+            <input class="param-input" type="number" step="0.01" min="0" max="1" id="LIDAR_RANGE_MIN_M">
+            <div class="param-desc">Jarak minimum yang dianggap valid. Ray di bawah ini dibuang (noise sensor).</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Range Max Valid<small>Batas jarak maksimum (m)</small></div>
+            <input class="param-input" type="number" step="0.5" min="1" max="30" id="LIDAR_RANGE_MAX_M">
+            <div class="param-desc">Ray di atas ini diabaikan. Sesuaikan dengan area kerja AMR.</div>
+        </div>
+    </div>
+
+</div><!-- /container -->
+
+<!-- APPLY BAR -->
+<div class="apply-bar">
+    <div class="hint">
+        Ubah nilai lalu tekan <span>APPLY</span>. Perubahan langsung aktif tanpa restart.
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn-reload" onclick="loadParams()">
+            <i class="fas fa-sync-alt me-1"></i>RELOAD
+        </button>
+        <button class="btn-apply" id="btn-apply" onclick="applyParams()">
+            <i class="fas fa-check me-1"></i>APPLY CHANGES
+        </button>
+    </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────
+const originalValues = {};
+let modifiedKeys     = new Set();
+
+// ── SECTION SCROLL ─────────────────────────────────────────────────
+function scrollTo(id) {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+}
+
+// ── TOAST ──────────────────────────────────────────────────────────
+function showToast(msg, isError = false) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className   = 'show' + (isError ? ' error' : '');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.className = ''; }, 3000);
+}
+
+// ── MODIFIED COUNT ─────────────────────────────────────────────────
+function updateModCount() {
+    const el = document.getElementById('mod-count');
+    if (modifiedKeys.size > 0) {
+        el.style.display = 'inline';
+        el.textContent   = modifiedKeys.size + ' CHANGE' + (modifiedKeys.size > 1 ? 'S' : '');
+    } else {
+        el.style.display = 'none';
+    }
+}
+
+// ── MARK INPUT ─────────────────────────────────────────────────────
+function markModified(el) {
+    const key   = el.id;
+    const orig  = originalValues[key];
+    const cur   = el.tagName === 'SELECT' ? el.value : el.value;
+
+    const changed = (String(orig) !== String(cur));
+    if (changed) {
+        el.classList.add('modified');
+        el.classList.remove('saved', 'error');
+        modifiedKeys.add(key);
+    } else {
+        el.classList.remove('modified', 'saved', 'error');
+        modifiedKeys.delete(key);
+    }
+    updateModCount();
+}
+
+// ── LOAD PARAMS ────────────────────────────────────────────────────
+async function loadParams() {
+    document.getElementById('loading-overlay').classList.remove('hidden');
+    try {
+        const res  = await fetch('/api/params');
+        const data = await res.json();
+        if (data.status !== 'ok') {
+            showToast('❌ Server error: ' + (data.message || 'unknown'), true);
+            return;
+        }
+
+        const p = data.params;
+        for (const [key, val] of Object.entries(p)) {
+            const el = document.getElementById(key);
+            if (!el) continue;
+
+            if (el.tagName === 'SELECT') {
+                el.value = String(val);
+            } else {
+                el.value = typeof val === 'number' ? val : val;
+            }
+
+            originalValues[key] = String(val);
+            el.classList.remove('modified', 'saved', 'error');
+
+            // listen changes
+            el.oninput  = () => markModified(el);
+            el.onchange = () => markModified(el);
+        }
+
+        modifiedKeys.clear();
+        updateModCount();
+        showToast('✔ PARAMETER LOADED');
+    } catch (e) {
+        showToast('❌ Gagal hubungi server', true);
+    } finally {
+        document.getElementById('loading-overlay').classList.add('hidden');
+    }
+}
+
+// ── APPLY PARAMS ───────────────────────────────────────────────────
+async function applyParams() {
+    if (modifiedKeys.size === 0) {
+        showToast('Tidak ada perubahan.'); return;
+    }
+
+    const payload = {};
+    for (const key of modifiedKeys) {
+        const el = document.getElementById(key);
+        if (!el) continue;
+        let val = el.value;
+        // Boolean select
+        if (val === 'true')  val = true;
+        else if (val === 'false') val = false;
+        else if (!isNaN(val) && val !== '') val = parseFloat(val);
+        payload[key] = val;
+    }
+
+    const btn = document.getElementById('btn-apply');
+    btn.disabled    = true;
+    btn.textContent = 'APPLYING...';
+
+    try {
+        const res  = await fetch('/api/params', {
+            method : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body   : JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (data.updated && data.updated.length > 0) {
+            data.updated.forEach(upd => {
+                const key = upd.split('=')[0];
+                const el  = document.getElementById(key);
+                if (el) {
+                    el.classList.remove('modified', 'error');
+                    el.classList.add('saved');
+                    originalValues[key] = String(el.value);
+                    modifiedKeys.delete(key);
+                }
+            });
+        }
+
+        if (data.errors && data.errors.length > 0) {
+            data.errors.forEach(err => {
+                const key = err.split(':')[0];
+                const el  = document.getElementById(key);
+                if (el) el.classList.add('error');
+            });
+            showToast('⚠ Partial: ' + data.errors.join(', '), true);
+        } else {
+            showToast('✔ ' + data.updated.length + ' PARAMETER UPDATED');
+        }
+
+        updateModCount();
+    } catch (e) {
+        showToast('❌ Gagal kirim ke server', true);
+    } finally {
+        btn.disabled    = false;
+        btn.innerHTML   = '<i class="fas fa-check me-1"></i>APPLY CHANGES';
+    }
+}
+
+// ── KEYBOARD SHORTCUT Ctrl+S ────────────────────────────────────────
+document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        applyParams();
+    }
+});
+
+// ── INIT ────────────────────────────────────────────────────────────
+loadParams();
+</script>
+</body>
+</html>

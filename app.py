@@ -387,7 +387,8 @@ if __name__ == "__main__":
 
     print("[FLASK] Memulai Server AMR Dashboard...")
     robot = AMRController()
-
+    robot.mode = "MANUAL"   # ← tambah ini
+    robot.stop_motor()      # ← pastikan motor berhenti
     def handle_shutdown(signum, frame):
         print("\n[SYSTEM] Shutdown signal diterima...")
         if robot:

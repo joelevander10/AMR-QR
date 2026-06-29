@@ -65,7 +65,6 @@ def patched_process_stream(self):
                 else:
                     cmd = qr_data.upper()
 
-                # Visualisasi
                 int_corners = qr_corners.astype(int)
                 for j in range(4):
                     cv2.line(frame, tuple(int_corners[j]),
@@ -99,6 +98,10 @@ robot = None
 def index():
     return render_template('index.html')
 
+@app.route('/settings')
+def settings():
+    return render_template('settings.html')
+
 def generate_video():
     placeholder = np.zeros((480, 640, 3), dtype=np.uint8)
     cv2.putText(placeholder, "INITIALIZING CAMERA...", (110, 240),
@@ -124,11 +127,8 @@ def video_feed():
 def get_status():
     if not robot: return jsonify({"status": "error"})
 
-    # --- Trackless ---
     trackless_data = None
     if hasattr(robot, 'trackless') and robot.trackless:
-        # Tampilkan encoder RELATIF dari titik start terakhir (reset saat MAJU/MUNDUR)
-        # agar dashboard menunjukkan jarak tempuh sesi ini, bukan nilai absolut kumulatif
         rel_l = round(robot.trackless.dist_l - robot.start_dist_l, 2)
         rel_r = round(robot.trackless.dist_r - robot.start_dist_r, 2)
         trackless_data = {
@@ -141,13 +141,12 @@ def get_status():
             "dist_traveled": round(getattr(robot, 'dist_traveled', 0.0), 2)
         }
 
-    # --- Lidar — sekarang kirim data lengkap ke dashboard ---
     lidar_data = {
-        "dist_cm"      : 999.0,
-        "is_stop"      : False,
-        "is_slow"      : False,
-        "active_rays"  : 0,         # jumlah ray valid di zona ±45°
-        "zone_deg"     : "±45°"
+        "dist_cm"    : 999.0,
+        "is_stop"    : False,
+        "is_slow"    : False,
+        "active_rays": 0,
+        "zone_deg"   : "±45°"
     }
     if hasattr(robot, 'lidar'):
         ld = robot.lidar
@@ -159,7 +158,6 @@ def get_status():
             "zone_deg"   : f"{ld.ANGLE_MIN_DEG:.0f}°~{ld.ANGLE_MAX_DEG:.0f}°"
         }
 
-    # --- Vision ---
     vision_cm = {
         'x'    : robot.vision_error.get('x', 0),
         'y'    : robot.vision_error.get('y', 0),
@@ -169,19 +167,182 @@ def get_status():
     }
 
     return jsonify({
-        "connected"       : robot.connected,
-        "mode"            : robot.mode,
-        "nav_mode"        : robot.nav_mode,
+        "connected"        : robot.connected,
+        "mode"             : robot.mode,
+        "nav_mode"         : robot.nav_mode,
         "nav_status_detail": robot.nav_status_detail,
-        "estop"           : robot.estop_active,
-        "lidar"           : lidar_data,
-        # field lama tetap ada agar index.html lama tidak error
-        "lidar_dist_cm"   : lidar_data["dist_cm"],
-        "lidar_stop"      : lidar_data["is_stop"],
-        "last_cmd"        : f"{robot.current_cmd} ({robot.current_val})",
-        "vision_error"    : vision_cm,
-        "trackless"       : trackless_data
+        "estop"            : robot.estop_active,
+        "lidar"            : lidar_data,
+        "lidar_dist_cm"    : lidar_data["dist_cm"],
+        "lidar_stop"       : lidar_data["is_stop"],
+        "last_cmd"         : f"{robot.current_cmd} ({robot.current_val})",
+        "vision_error"     : vision_cm,
+        "trackless"        : trackless_data
     })
+
+# ==========================================
+# 3. PARAMETER API
+# GET  /api/params  → baca semua parameter saat ini
+# POST /api/params  → update satu atau lebih parameter sekaligus
+# ==========================================
+@app.route('/api/params', methods=['GET'])
+def get_params():
+    if not robot:
+        return jsonify({"status": "error", "message": "Robot belum siap"})
+
+    r = robot
+    ld = robot.lidar
+
+    params = {
+        # --- VISION ---
+        "QR_REAL_SIZE_MM"   : r.QR_REAL_SIZE_MM,
+
+        # --- KECEPATAN (dalam satuan V_SCALE unit, tampil sebagai volt) ---
+        "V_CRUISE_V"        : round(r.V_CRUISE   / r.V_SCALE, 2),
+        "V_APPROACH_V"      : round(r.V_APPROACH / r.V_SCALE, 2),
+        "V_STALL_V"         : round(r.V_STALL    / r.V_SCALE, 2),
+        "V_ALIGN_V"         : round(r.V_ALIGN    / r.V_SCALE, 2),
+        "V_ALIGN_Y_FAST_V"  : round(r.V_ALIGN_Y_FAST / r.V_SCALE, 2),
+        "V_POST_ROT_V"      : round(r.V_POST_ROT / r.V_SCALE, 2),
+        "CREEP_SPEED_V"     : round(r.CREEP_SPEED / r.V_SCALE, 2),
+
+        # --- LIMIT KECEPATAN ---
+        "LIMIT_SPD_LINEAR_V"  : round(r.LIMIT_SPD_LINEAR   / r.V_SCALE, 2),
+        "LIMIT_SPD_ROTATION_V": round(r.LIMIT_SPD_ROTATION / r.V_SCALE, 2),
+
+        # --- JARAK NAVIGASI (cm) ---
+        "TARGET_X_DIST_CM"  : r.TARGET_X_DIST_CM,
+        "ACCEL_DIST_CM"     : r.ACCEL_DIST_CM,
+        "DECEL_START_CM"    : r.DECEL_START_CM,
+        "CREEP_START_CM"    : r.CREEP_START_CM,
+        "HARD_STOP_CM"      : r.HARD_STOP_CM,
+        "CORRECTION_DIST_CM": r.CORRECTION_DIST_CM,
+
+        # --- ROTASI BESAR ---
+        "BRAKE_BUFFER_DEG"  : r.BRAKE_BUFFER_DEG,
+
+        # --- QR SEARCH ---
+        "QR_TIMEOUT_SEARCH" : r.QR_TIMEOUT_SEARCH,
+        "QR_SEARCH_MAX_DEG" : r.QR_SEARCH_MAX_DEG,
+
+        # --- ALIGN PULSE ---
+        "ALIGN_MOVE_DURATION": r.ALIGN_MOVE_DURATION,
+        "ALIGN_STOP_DURATION" : r.ALIGN_STOP_DURATION,
+        "ALIGN_Y_FAST_ZONE"   : r.ALIGN_Y_FAST_ZONE,
+
+        # --- PID ---
+        "KP_IMU"            : r.KP_IMU,
+        "KI_IMU"            : r.KI_IMU,
+        "KD_IMU"            : r.KD_IMU,
+        "KP_ENC"            : r.KP_ENC,
+
+        # --- TRIM & ARAH ---
+        "TRIM_L_AUTO"       : r.TRIM_L_AUTO,
+        "TRIM_R_AUTO"       : r.TRIM_R_AUTO,
+        "DIR_KOREKSI"       : r.DIR_KOREKSI,
+        "IMU_DIR"           : r.IMU_DIR,
+        "REVERSE_CAMERA_X"  : r.REVERSE_CAMERA_X,
+
+        # --- LIDAR SAFETY ---
+        "LIDAR_STOP_M"      : ld.STOP_DISTANCE,
+        "LIDAR_SLOW_M"      : ld.SLOW_DISTANCE,
+        "LIDAR_ANGLE_MIN"   : ld.ANGLE_MIN_DEG,
+        "LIDAR_ANGLE_MAX"   : ld.ANGLE_MAX_DEG,
+        "LIDAR_RANGE_MIN_M" : ld.RANGE_MIN_VALID,
+        "LIDAR_RANGE_MAX_M" : ld.RANGE_MAX_VALID,
+
+        # --- TRACK ---
+        "TRACK_WIDTH_MM"    : r.TRACK_WIDTH_MM,
+    }
+    return jsonify({"status": "ok", "params": params})
+
+
+@app.route('/api/params', methods=['POST'])
+def set_params():
+    if not robot:
+        return jsonify({"status": "error", "message": "Robot belum siap"})
+
+    data    = request.json or {}
+    updated = []
+    errors  = []
+    r       = robot
+    ld      = robot.lidar
+
+    def _set(key, converter, setter):
+        if key in data:
+            try:
+                val = converter(data[key])
+                setter(val)
+                updated.append(f"{key}={val}")
+            except Exception as e:
+                errors.append(f"{key}: {e}")
+
+    # --- VISION ---
+    _set("QR_REAL_SIZE_MM",    float, lambda v: setattr(r, 'QR_REAL_SIZE_MM', v))
+
+    # --- KECEPATAN (input volt, simpan *V_SCALE) ---
+    _set("V_CRUISE_V",         float, lambda v: setattr(r, 'V_CRUISE',    v * r.V_SCALE))
+    _set("V_APPROACH_V",       float, lambda v: setattr(r, 'V_APPROACH',  v * r.V_SCALE))
+    _set("V_STALL_V",          float, lambda v: setattr(r, 'V_STALL',     v * r.V_SCALE))
+    _set("V_ALIGN_V",          float, lambda v: setattr(r, 'V_ALIGN',     v * r.V_SCALE))
+    _set("V_ALIGN_Y_FAST_V",   float, lambda v: setattr(r, 'V_ALIGN_Y_FAST', v * r.V_SCALE))
+    _set("V_POST_ROT_V",       float, lambda v: setattr(r, 'V_POST_ROT',  v * r.V_SCALE))
+    _set("CREEP_SPEED_V",      float, lambda v: setattr(r, 'CREEP_SPEED', v * r.V_SCALE))
+
+    # --- LIMIT ---
+    _set("LIMIT_SPD_LINEAR_V",   float, lambda v: setattr(r, 'LIMIT_SPD_LINEAR',   v * r.V_SCALE))
+    _set("LIMIT_SPD_ROTATION_V", float, lambda v: setattr(r, 'LIMIT_SPD_ROTATION', v * r.V_SCALE))
+
+    # --- JARAK (cm) ---
+    _set("TARGET_X_DIST_CM",   float, lambda v: setattr(r, 'TARGET_X_DIST_CM',   v))
+    _set("ACCEL_DIST_CM",      float, lambda v: setattr(r, 'ACCEL_DIST_CM',      v))
+    _set("DECEL_START_CM",     float, lambda v: setattr(r, 'DECEL_START_CM',     v))
+    _set("CREEP_START_CM",     float, lambda v: setattr(r, 'CREEP_START_CM',     v))
+    _set("HARD_STOP_CM",       float, lambda v: setattr(r, 'HARD_STOP_CM',       v))
+    _set("CORRECTION_DIST_CM", float, lambda v: setattr(r, 'CORRECTION_DIST_CM', v))
+
+    # --- ROTASI ---
+    _set("BRAKE_BUFFER_DEG",   float, lambda v: setattr(r, 'BRAKE_BUFFER_DEG',   v))
+
+    # --- QR SEARCH ---
+    _set("QR_TIMEOUT_SEARCH",  float, lambda v: setattr(r, 'QR_TIMEOUT_SEARCH',  v))
+    _set("QR_SEARCH_MAX_DEG",  float, lambda v: setattr(r, 'QR_SEARCH_MAX_DEG',  v))
+
+    # --- ALIGN PULSE ---
+    _set("ALIGN_MOVE_DURATION", float, lambda v: setattr(r, 'ALIGN_MOVE_DURATION', v))
+    _set("ALIGN_STOP_DURATION", float, lambda v: setattr(r, 'ALIGN_STOP_DURATION', v))
+    _set("ALIGN_Y_FAST_ZONE",   float, lambda v: setattr(r, 'ALIGN_Y_FAST_ZONE',   v))
+
+    # --- PID ---
+    _set("KP_IMU", float, lambda v: setattr(r, 'KP_IMU', v))
+    _set("KI_IMU", float, lambda v: setattr(r, 'KI_IMU', v))
+    _set("KD_IMU", float, lambda v: setattr(r, 'KD_IMU', v))
+    _set("KP_ENC", float, lambda v: setattr(r, 'KP_ENC', v))
+
+    # --- TRIM & ARAH ---
+    _set("TRIM_L_AUTO",      float, lambda v: setattr(r, 'TRIM_L_AUTO', v))
+    _set("TRIM_R_AUTO",      float, lambda v: setattr(r, 'TRIM_R_AUTO', v))
+    _set("DIR_KOREKSI",      float, lambda v: setattr(r, 'DIR_KOREKSI', v))
+    _set("IMU_DIR",          float, lambda v: setattr(r, 'IMU_DIR',     v))
+    _set("REVERSE_CAMERA_X", bool, lambda v: setattr(r, 'REVERSE_CAMERA_X', v))
+
+    # --- LIDAR ---
+    _set("LIDAR_STOP_M",     float, lambda v: setattr(ld, 'STOP_DISTANCE',   v))
+    _set("LIDAR_SLOW_M",     float, lambda v: setattr(ld, 'SLOW_DISTANCE',   v))
+    _set("LIDAR_ANGLE_MIN",  float, lambda v: setattr(ld, 'ANGLE_MIN_DEG',   v))
+    _set("LIDAR_ANGLE_MAX",  float, lambda v: setattr(ld, 'ANGLE_MAX_DEG',   v))
+    _set("LIDAR_RANGE_MIN_M",float, lambda v: setattr(ld, 'RANGE_MIN_VALID', v))
+    _set("LIDAR_RANGE_MAX_M",float, lambda v: setattr(ld, 'RANGE_MAX_VALID', v))
+
+    # --- TRACK ---
+    _set("TRACK_WIDTH_MM",   float, lambda v: setattr(r, 'TRACK_WIDTH_MM', v))
+
+    return jsonify({
+        "status" : "ok" if not errors else "partial",
+        "updated": updated,
+        "errors" : errors
+    })
+
 
 @app.route('/api/connect', methods=['POST'])
 def api_connect():
@@ -224,10 +385,9 @@ def api_manual_stop():
 if __name__ == "__main__":
     import signal
 
-    print("[FLASK] Memulai Server AGV Dashboard...")
+    print("[FLASK] Memulai Server AMR Dashboard...")
     robot = AMRController()
 
-    # Signal handler — Ctrl+C / kill / systemctl stop
     def handle_shutdown(signum, frame):
         print("\n[SYSTEM] Shutdown signal diterima...")
         if robot:
@@ -245,7 +405,6 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT,  handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
 
-    # rospy.spin() di thread terpisah agar callback lidar diproses
     try:
         import rospy
         ros_thread = threading.Thread(target=rospy.spin, daemon=True)

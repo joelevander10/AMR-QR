@@ -356,6 +356,13 @@ class AMRController:
         self.V_POST_ROT           = 0.3 * self.V_SCALE
         self._post_rot_creep_dir  = 1
 
+        # POST_ROT_CREEP pulse (pelan-pelan agar kamera sempat baca QR)
+        self.V_POST_ROT_CREEP      = 0.2 * self.V_SCALE  # lebih pelan dari V_POST_ROT
+        self.POST_ROT_MOVE_DUR     = 0.2   # detik gerak per pulse
+        self.POST_ROT_STOP_DUR     = 0.8   # detik berhenti per pulse (kamera scan)
+        self._post_rot_pulse_timer = 0.0
+        self._post_rot_pulse_state = "MOVE"
+
         # =======================================================
         # PARAMETER QR SEARCH ROTATION
         # =======================================================
@@ -553,6 +560,8 @@ class AMRController:
     # ----------------------------------------------------------
     def _enter_reacquire(self, qr_fully_visible):
         self.stop_motor()
+        self._post_rot_pulse_timer = 0.0
+        self._post_rot_pulse_state = "MOVE"
         if qr_fully_visible:
             self.nav_mode = "IDLE"
             self.reset_vision_system()
@@ -726,20 +735,47 @@ class AMRController:
             return
 
         # -- POST_ROT_CREEP ----------------------------------------
+        # -- POST_ROT_CREEP (pulse pelan agar kamera sempat scan QR) --
         if self.nav_mode == "POST_ROT_CREEP":
             if qr_sight:
                 self.stop_motor()
+                self._post_rot_pulse_timer = 0.0
+                self._post_rot_pulse_state = "MOVE"
                 self.nav_mode = "IDLE"
                 self.reset_vision_system()
                 self.set_nav_status_detail("QR TERBACA SETELAH ROTASI → IDLE")
                 return
             if self.lidar.obstacle_stop:
                 self.stop_motor(); return
-            spd   = self.V_POST_ROT * self._post_rot_creep_dir
-            label = "MAJU" if self._post_rot_creep_dir > 0 else "MUNDUR"
-            self.set_motor(spd, spd)
-            self.set_nav_status_detail(f"POST ROT CREEP: {label} 0.3V | cari QR...")
-            return
+
+            current_t = time.time()
+            if self._post_rot_pulse_timer == 0.0:
+                self._post_rot_pulse_timer = current_t
+                self._post_rot_pulse_state = "MOVE"
+
+            elapsed = current_t - self._post_rot_pulse_timer
+            label   = "MAJU" if self._post_rot_creep_dir > 0 else "MUNDUR"
+
+            if self._post_rot_pulse_state == "MOVE":
+                if elapsed > self.POST_ROT_MOVE_DUR:
+                    self._post_rot_pulse_state = "STOP"
+                    self._post_rot_pulse_timer = current_t
+                    self.stop_motor()
+                else:
+                    spd = self.V_POST_ROT_CREEP * self._post_rot_creep_dir
+                    self.set_motor(spd, spd)
+                self.set_nav_status_detail(
+                    f"POST ROT CREEP: {label} GERAK {self.V_POST_ROT_CREEP/self.V_SCALE:.1f}V | cari QR...")
+                return
+
+            elif self._post_rot_pulse_state == "STOP":
+                self.stop_motor()
+                if elapsed > self.POST_ROT_STOP_DUR:
+                    self._post_rot_pulse_state = "MOVE"
+                    self._post_rot_pulse_timer = current_t
+                self.set_nav_status_detail(
+                    f"POST ROT CREEP: {label} JEDA {self.POST_ROT_STOP_DUR:.1f}s | scan QR...")
+                return
 
         # -- ALIGN_TO_90 (pulse menuju ±90°) -----------------------
         if self.nav_mode == "ALIGN_TO_90":

@@ -177,7 +177,11 @@ def get_status():
         "lidar_stop"       : lidar_data["is_stop"],
         "last_cmd"         : f"{robot.current_cmd} ({robot.current_val})",
         "vision_error"     : vision_cm,
-        "trackless"        : trackless_data
+        "trackless"        : trackless_data,
+        "selected_loop"     : robot.selected_loop,
+        "target_align_angle": robot.target_align_angle,
+        "cabang_rotated"    : robot._cabang_rotated,
+        "current_goal"      : robot.current_goal
     })
 
 # ==========================================
@@ -211,7 +215,9 @@ def get_params():
         "LIMIT_SPD_ROTATION_V": round(r.LIMIT_SPD_ROTATION / r.V_SCALE, 2),
 
         # --- JARAK NAVIGASI (cm) ---
-        "TARGET_X_DIST_CM"  : r.TARGET_X_DIST_CM,
+        "TARGET_X_DIST_CM"          : r.TARGET_X_DIST_CM,
+        "USE_Y_OFFSET_CORRECTION"   : r.USE_Y_OFFSET_CORRECTION,
+        "Y_OFFSET_CORRECTION_MAX"   : r.Y_OFFSET_CORRECTION_MAX,
         "ACCEL_DIST_CM"     : r.ACCEL_DIST_CM,
         "DECEL_START_CM"    : r.DECEL_START_CM,
         "CREEP_START_CM"    : r.CREEP_START_CM,
@@ -226,9 +232,14 @@ def get_params():
         "QR_SEARCH_MAX_DEG" : r.QR_SEARCH_MAX_DEG,
 
         # --- ALIGN PULSE ---
-        "ALIGN_MOVE_DURATION": r.ALIGN_MOVE_DURATION,
+        "ALIGN_MOVE_DURATION" : r.ALIGN_MOVE_DURATION,
         "ALIGN_STOP_DURATION" : r.ALIGN_STOP_DURATION,
         "ALIGN_Y_FAST_ZONE"   : r.ALIGN_Y_FAST_ZONE,
+
+        # --- KICK-START ---
+        "V_ALIGN_KICK_V"        : round(r.V_ALIGN_KICK / r.V_SCALE, 2),
+        "ALIGN_KICK_DUR"        : r.ALIGN_KICK_DUR,
+        "ALIGN_KICK_THRESHOLD"  : r.ALIGN_KICK_THRESHOLD,
 
         # --- PID ---
         "KP_IMU"            : r.KP_IMU,
@@ -294,7 +305,9 @@ def set_params():
     _set("LIMIT_SPD_ROTATION_V", float, lambda v: setattr(r, 'LIMIT_SPD_ROTATION', v * r.V_SCALE))
 
     # --- JARAK (cm) ---
-    _set("TARGET_X_DIST_CM",   float, lambda v: setattr(r, 'TARGET_X_DIST_CM',   v))
+    _set("TARGET_X_DIST_CM",         float, lambda v: setattr(r, 'TARGET_X_DIST_CM',          v))
+    _set("USE_Y_OFFSET_CORRECTION",  bool,  lambda v: setattr(r, 'USE_Y_OFFSET_CORRECTION',   v))
+    _set("Y_OFFSET_CORRECTION_MAX",  float, lambda v: setattr(r, 'Y_OFFSET_CORRECTION_MAX',   v))
     _set("ACCEL_DIST_CM",      float, lambda v: setattr(r, 'ACCEL_DIST_CM',      v))
     _set("DECEL_START_CM",     float, lambda v: setattr(r, 'DECEL_START_CM',     v))
     _set("CREEP_START_CM",     float, lambda v: setattr(r, 'CREEP_START_CM',     v))
@@ -312,6 +325,11 @@ def set_params():
     _set("ALIGN_MOVE_DURATION", float, lambda v: setattr(r, 'ALIGN_MOVE_DURATION', v))
     _set("ALIGN_STOP_DURATION", float, lambda v: setattr(r, 'ALIGN_STOP_DURATION', v))
     _set("ALIGN_Y_FAST_ZONE",   float, lambda v: setattr(r, 'ALIGN_Y_FAST_ZONE',   v))
+
+    # --- KICK-START ---
+    _set("V_ALIGN_KICK_V",       float, lambda v: setattr(r, 'V_ALIGN_KICK',        v * r.V_SCALE))
+    _set("ALIGN_KICK_DUR",       float, lambda v: setattr(r, 'ALIGN_KICK_DUR',       v))
+    _set("ALIGN_KICK_THRESHOLD", float, lambda v: setattr(r, 'ALIGN_KICK_THRESHOLD', v))
 
     # --- PID ---
     _set("KP_IMU", float, lambda v: setattr(r, 'KP_IMU', v))
@@ -344,6 +362,36 @@ def set_params():
     })
 
 
+# ==========================================
+# 4. LOOP SELECTOR API
+# ==========================================
+@app.route('/api/loop', methods=['GET'])
+def get_loop():
+    if not robot:
+        return jsonify({"status": "error"})
+    return jsonify({
+        "status"       : "ok",
+        "selected_loop": robot.selected_loop
+    })
+
+@app.route('/api/loop', methods=['POST'])
+def set_loop():
+    if not robot:
+        return jsonify({"status": "error"})
+    data = request.json or {}
+    loop = int(data.get('loop', 1))
+    if loop not in [1, 2]:
+        return jsonify({"status": "error", "message": "loop harus 1 atau 2"})
+    robot.selected_loop        = loop
+    robot.target_align_angle   = 0.0   # reset alignment
+    robot._cabang_rotated      = False
+    print(f"[LOOP] Selected loop: {loop} "
+          f"({'KIRI -90°' if loop == 1 else 'KANAN +90°'})")
+    return jsonify({
+        "status"       : "ok",
+        "selected_loop": robot.selected_loop
+    })
+
 @app.route('/api/connect', methods=['POST'])
 def api_connect():
     if robot: robot.connect_hardware()
@@ -363,7 +411,15 @@ def api_mode():
     mode = data.get('mode', 'MANUAL')
     if robot and not robot.estop_active:
         robot.mode = mode
-        if mode == 'MANUAL': robot.stop_motor()
+        if mode == 'MANUAL':
+            robot.stop_motor()
+        elif mode == 'AUTO':
+            # Kalau sebelumnya berhenti di GOAL, lanjut dari sana
+            if robot.nav_mode == 'GOAL_REACHED':
+                robot.nav_mode    = 'IDLE'
+                robot.ignore_goal = True
+                robot.reset_vision_system()
+                robot.set_nav_status_detail("LANJUT DARI GOAL... (Web HMI)")
     return jsonify({"status": "ok", "mode": robot.mode})
 
 @app.route('/api/manual/move', methods=['POST'])
@@ -387,8 +443,7 @@ if __name__ == "__main__":
 
     print("[FLASK] Memulai Server AMR Dashboard...")
     robot = AMRController()
-    robot.mode = "MANUAL"   # ← tambah ini
-    robot.stop_motor()      # ← pastikan motor berhenti
+
     def handle_shutdown(signum, frame):
         print("\n[SYSTEM] Shutdown signal diterima...")
         if robot:

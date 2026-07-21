@@ -131,6 +131,28 @@
             cursor: pointer;
         }
 
+        .preset-btn {
+            background: #1a1a1a;
+            border: 1px solid var(--accent-cyan);
+            color: var(--accent-cyan);
+            border-radius: 3px;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.78rem;
+            font-weight: 700;
+            padding: 6px 16px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .preset-btn:hover {
+            background: var(--accent-cyan);
+            color: #000;
+        }
+        .preset-btn.active-preset {
+            background: var(--accent-cyan);
+            color: #000;
+            box-shadow: 0 0 8px var(--accent-cyan);
+        }
+
         .param-desc {
             color: #444;
             font-size: 0.70rem;
@@ -178,10 +200,12 @@
             transform: translateY(10px);
             transition: opacity 0.25s, transform 0.25s;
             max-width: 340px;
+            pointer-events: none;
         }
         #toast.show {
             opacity: 1;
             transform: translateY(0);
+            pointer-events: auto;
         }
         #toast.error {
             border-color: var(--accent-red);
@@ -201,7 +225,7 @@
             align-items: center;
             justify-content: space-between;
             gap: 12px;
-            z-index: 99;
+            z-index: 200;
         }
         .apply-bar .hint { color: #555; font-size: 0.72rem; }
         .apply-bar .hint span { color: var(--accent-orange); }
@@ -273,11 +297,13 @@
             position: fixed; inset: 0;
             background: rgba(0,0,0,0.7);
             display: flex; align-items: center; justify-content: center;
-            z-index: 999;
+            z-index: 50;
             font-size: 1rem;
             color: var(--accent-cyan);
             letter-spacing: 2px;
+            pointer-events: none;
         }
+        #loading-overlay.active { pointer-events: all; }
         #loading-overlay.hidden { display: none; }
     </style>
 </head>
@@ -309,6 +335,7 @@
         <button class="tab-btn" onclick="scrollTo('sec-pid')">PID</button>
         <button class="tab-btn" onclick="scrollTo('sec-trim')">TRIM & DIR</button>
         <button class="tab-btn" onclick="scrollTo('sec-lidar')">LIDAR SAFETY</button>
+        <button class="tab-btn" onclick="scrollTo('sec-kick')">KICK-START</button>
     </div>
 
     <!-- ═══════════════════════════════════════════════════ -->
@@ -389,6 +416,18 @@
             <i class="fas fa-ruler-horizontal"></i> PROFIL JARAK NAVIGASI (cm)
         </div>
 
+        <!-- PRESET JARAK ANTAR QR -->
+        <div class="param-row" style="grid-template-columns: 200px 1fr;">
+            <div class="param-label">Preset Jarak QR<small>Auto-isi semua param jarak</small></div>
+            <div class="d-flex gap-2 flex-wrap">
+                <button type="button" class="preset-btn" data-label="1.0 m" onclick="applyDistPreset(100, this)">1.0 m</button>
+                <button type="button" class="preset-btn" data-label="1.5 m" onclick="applyDistPreset(150, this)">1.5 m</button>
+                <button type="button" class="preset-btn" data-label="2.0 m" onclick="applyDistPreset(200, this)">2.0 m</button>
+                <button type="button" class="preset-btn" data-label="2.5 m" onclick="applyDistPreset(250, this)">2.5 m</button>
+                <button type="button" class="preset-btn" data-label="3.0 m" onclick="applyDistPreset(300, this)">3.0 m</button>
+            </div>
+        </div>
+
         <div class="param-row">
             <div class="param-label">Target Jarak<small>Jarak antar QR (cm)</small></div>
             <input class="param-input" type="number" step="1" min="0" id="TARGET_X_DIST_CM">
@@ -448,6 +487,31 @@
             <div class="param-label">Align Y Fast Zone<small>Threshold kecepatan Y (px)</small></div>
             <input class="param-input" type="number" step="5" min="0" max="500" id="ALIGN_Y_FAST_ZONE">
             <div class="param-desc">Jika error Y (px) melebihi nilai ini, ALIGN_Y pakai kecepatan V_ALIGN_Y_FAST. Di bawah nilai ini, interpolasi ke V_ALIGN.</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- SECTION: KICK-START                                 -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <div class="param-section" id="sec-kick">
+        <div class="param-section-header">
+            <i class="fas fa-bolt"></i> KICK-START — OVERCOME STATIC FRICTION
+        </div>
+
+        <div class="param-row">
+            <div class="param-label">V Kick<small>Voltase sentak awal (V)</small></div>
+            <input class="param-input" type="number" step="0.05" min="0" max="3" id="V_ALIGN_KICK_V">
+            <div class="param-desc">Voltase tinggi sesaat di awal pulse untuk overcome static friction. Hanya aktif jika error > Kick Threshold. Default 0.6V.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Kick Duration<small>Durasi sentak (s)</small></div>
+            <input class="param-input" type="number" step="0.01" min="0.01" max="0.5" id="ALIGN_KICK_DUR">
+            <div class="param-desc">Lama voltase kick dipertahankan sebelum turun ke V_ALIGN normal. Default 0.08s (80ms). Jangan terlalu panjang agar tidak overshoot.</div>
+        </div>
+        <div class="param-row">
+            <div class="param-label">Kick Threshold<small>Batas error pakai kick (°/px)</small></div>
+            <input class="param-input" type="number" step="0.5" min="0" max="30" id="ALIGN_KICK_THRESHOLD">
+            <div class="param-desc">Error di atas nilai ini → pakai kick. Error di bawah → langsung pelan tanpa kick agar tidak overshoot. Default 3.0°.</div>
         </div>
     </div>
 
@@ -631,6 +695,85 @@ function showToast(msg, isError = false) {
     t._timer = setTimeout(() => { t.className = ''; }, 3000);
 }
 
+// ── DISTANCE PRESET (AUTO-SAVE LANGSUNG KE ROBOT) ───────────────────
+// Klik tombol preset langsung mengisi nilai DAN mengirim ke server,
+// tidak perlu tekan APPLY lagi.
+async function applyDistPreset(targetCm, btnEl) {
+    const ratios = {
+        ACCEL_DIST_CM:      0.23,
+        DECEL_START_CM:     0.67,
+        CREEP_START_CM:     0.93,
+        HARD_STOP_CM:       0.99,
+        CORRECTION_DIST_CM: 0.73
+    };
+
+    const values = {
+        TARGET_X_DIST_CM:   targetCm,
+        ACCEL_DIST_CM:      Math.round(targetCm * ratios.ACCEL_DIST_CM),
+        DECEL_START_CM:     Math.round(targetCm * ratios.DECEL_START_CM),
+        CREEP_START_CM:     Math.round(targetCm * ratios.CREEP_START_CM),
+        HARD_STOP_CM:       Math.round(targetCm * ratios.HARD_STOP_CM),
+        CORRECTION_DIST_CM: Math.round(targetCm * ratios.CORRECTION_DIST_CM)
+    };
+
+    // Update tampilan input dulu
+    for (const [key, val] of Object.entries(values)) {
+        const el = document.getElementById(key);
+        if (!el) continue;
+        el.value = val;
+    }
+
+    // Highlight tombol preset yang aktif + disable sementara saat saving
+    document.querySelectorAll('.preset-btn').forEach(b => {
+        b.classList.remove('active-preset');
+        b.disabled = true;
+    });
+    if (btnEl) {
+        btnEl.classList.add('active-preset');
+        btnEl.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i>';
+    }
+
+    try {
+        const res = await fetch('/api/params', {
+            method : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body   : JSON.stringify(values)
+        });
+
+        if (!res.ok) {
+            showToast('❌ Server error: HTTP ' + res.status, true);
+            return;
+        }
+
+        const data = await res.json();
+
+        // Tandai input sebagai saved + update originalValues
+        for (const key of Object.keys(values)) {
+            const el = document.getElementById(key);
+            if (el) {
+                el.classList.remove('modified', 'error');
+                el.classList.add('saved');
+                originalValues[key] = String(el.value);
+                modifiedKeys.delete(key);
+            }
+        }
+        updateModCount();
+
+        if (data.errors && data.errors.length > 0) {
+            showToast('⚠ Partial: ' + data.errors.join(', '), true);
+        } else {
+            showToast(`✔ JARAK ${(targetCm/100).toFixed(1)}m DITERAPKAN & TERSIMPAN`);
+        }
+    } catch (e) {
+        showToast('❌ Gagal kirim ke server: ' + e.message, true);
+    } finally {
+        document.querySelectorAll('.preset-btn').forEach(b => b.disabled = false);
+        if (btnEl) btnEl.innerHTML = btnEl.dataset.label;
+    }
+
+    document.getElementById('sec-dist').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 // ── MODIFIED COUNT ─────────────────────────────────────────────────
 function updateModCount() {
     const el = document.getElementById('mod-count');
@@ -711,7 +854,6 @@ async function applyParams() {
         const el = document.getElementById(key);
         if (!el) continue;
         let val = el.value;
-        // Boolean select
         if (val === 'true')  val = true;
         else if (val === 'false') val = false;
         else if (!isNaN(val) && val !== '') val = parseFloat(val);
@@ -719,8 +861,8 @@ async function applyParams() {
     }
 
     const btn = document.getElementById('btn-apply');
-    btn.disabled    = true;
-    btn.textContent = 'APPLYING...';
+    btn.disabled  = true;
+    btn.innerHTML = '<i class="fas fa-circle-notch fa-spin me-1"></i>APPLYING...';
 
     try {
         const res  = await fetch('/api/params', {
@@ -728,6 +870,12 @@ async function applyParams() {
             headers: { 'Content-Type': 'application/json' },
             body   : JSON.stringify(payload)
         });
+
+        if (!res.ok) {
+            showToast('❌ Server error: HTTP ' + res.status, true);
+            return;
+        }
+
         const data = await res.json();
 
         if (data.updated && data.updated.length > 0) {
@@ -756,10 +904,10 @@ async function applyParams() {
 
         updateModCount();
     } catch (e) {
-        showToast('❌ Gagal kirim ke server', true);
+        showToast('❌ Gagal kirim ke server: ' + e.message, true);
     } finally {
-        btn.disabled    = false;
-        btn.innerHTML   = '<i class="fas fa-check me-1"></i>APPLY CHANGES';
+        btn.disabled  = false;
+        btn.innerHTML = '<i class="fas fa-check me-1"></i>APPLY CHANGES';
     }
 }
 

@@ -9,60 +9,227 @@
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-dark: #121212;
-            --panel-bg: #1e1e1e;
-            --accent-orange: #ff9800;
+            --bg-dark:        #0d0d0d;
+            --panel-bg:       #161616;
+            --panel-border:   #2a2a2a;
+            --accent-orange:  #ff9800;
             --terminal-green: #00ff41;
-            --accent-cyan: #00d2ff;
+            --accent-cyan:    #00d2ff;
+            --accent-red:     #ff4444;
         }
-        body { background-color: var(--bg-dark); color: #e0e0e0; font-family: 'Segoe UI', sans-serif; }
-        .navbar { background-color: #000 !important; border-bottom: 2px solid var(--accent-orange); }
-        .card { background-color: var(--panel-bg); border: 1px solid #444; border-radius: 4px; margin-bottom: 20px; }
-        .card-header { font-weight: bold; border-bottom: 1px solid #444; background-color: #252525; }
-        .status-val { font-family: 'Roboto Mono', monospace; font-weight: bold; color: var(--terminal-green); background: #000; padding: 2px 6px; border-radius: 3px; }
-        .val-warning { color: var(--accent-orange) !important; }
-        .val-info    { color: var(--accent-cyan) !important; }
-        .val-danger  { color: #ff4444 !important; }
-        .val-ok      { color: var(--terminal-green) !important; }
-        .video-container { position: relative; width: 100%; padding-top: 75%; background: #000; border: 2px solid #555; }
-        .video-feed { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
-        .estop-btn {
-            height: 80px; font-size: 24px; font-weight: 900;
-            background: repeating-linear-gradient(45deg, #b71c1c, #b71c1c 10px, #d32f2f 10px, #d32f2f 20px);
-            color: white; border: 3px solid #ff5252;
-            box-shadow: 0 0 15px rgba(255, 0, 0, 0.4);
+        * { box-sizing: border-box; }
+        html, body {
+            height: 100%;
+            margin: 0;
+            background: var(--bg-dark);
+            color: #d0d0d0;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.78rem;
+            overflow: hidden; /* no page scroll — fit to screen */
         }
-        .joystick-grid {
-            display: grid; grid-template-columns: 1fr 1fr 1fr;
-            gap: 8px; max-width: 320px; margin: 0 auto;
-            background: #111; padding: 10px; border-radius: 8px;
-        }
-        .btn-control { height: 60px; background: #333; border: 1px solid #555; color: #ddd; }
-        .btn-control:active { background: var(--accent-orange); color: #000; }
-        #nav-detail {
-            color: var(--accent-orange); background: rgba(255, 152, 0, 0.1);
-            display: block; padding: 8px; text-align: center;
-            border: 1px dashed var(--accent-orange); margin-top: 10px;
-            font-weight: bold; font-family: 'Roboto Mono', monospace;
-        }
-        .sensor-box {
-            background: #0a0a0a; border: 1px solid #333;
-            padding: 8px; border-radius: 4px; margin-bottom: 8px; text-align: center;
-        }
-        .sensor-box span { display: block; font-size: 0.8rem; color: #888; margin-bottom: 4px; }
 
+        /* ── TOPBAR ── */
+        .topbar {
+            height: 44px;
+            background: #000;
+            border-bottom: 2px solid var(--accent-orange);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            flex-shrink: 0;
+        }
+        .topbar-brand { color: var(--accent-orange); font-weight: 700; font-size: 0.9rem; letter-spacing: 2px; }
+        .topbar-right { display: flex; align-items: center; gap: 10px; }
+        .conn-badge {
+            font-size: 0.72rem; font-weight: 700; padding: 3px 10px;
+            border-radius: 2px; letter-spacing: 1px;
+        }
+        .conn-online  { background: #003300; color: var(--terminal-green); border: 1px solid var(--terminal-green); }
+        .conn-offline { background: #330000; color: var(--accent-red);     border: 1px solid var(--accent-red); }
+        .btn-settings-link {
+            background: transparent; border: 1px solid #444; color: #888;
+            border-radius: 2px; font-family: 'Roboto Mono', monospace;
+            font-size: 0.70rem; padding: 3px 10px; text-decoration: none;
+            transition: all 0.15s;
+        }
+        .btn-settings-link:hover { border-color: var(--accent-orange); color: var(--accent-orange); }
+
+        /* ── MAIN GRID ── */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 320px 280px;
+            grid-template-rows: 1fr;
+            gap: 6px;
+            padding: 6px;
+            height: calc(100vh - 44px);
+        }
+
+        /* ── PANEL BASE ── */
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 3px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            min-height: 0;
+        }
+        .panel-hdr {
+            background: #1c1c1c;
+            border-bottom: 1px solid var(--panel-border);
+            padding: 5px 10px;
+            font-size: 0.70rem;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            color: var(--accent-cyan);
+            flex-shrink: 0;
+        }
+        .panel-hdr i { color: var(--accent-orange); margin-right: 6px; }
+        .panel-body  { padding: 6px; flex: 1; overflow: hidden; display: flex; flex-direction: column; gap: 5px; min-height: 0; }
+
+        /* ── LEFT COL: CAMERA ── */
+        .col-camera {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .camera-wrap {
+            flex: 1;
+            position: relative;
+            background: #000;
+            border: 1px solid #333;
+            border-radius: 3px;
+            overflow: hidden;
+            min-height: 0;
+        }
+        .camera-wrap img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .camera-overlay {
+            position: absolute;
+            top: 8px; right: 8px;
+            background: rgba(0,0,0,0.65);
+            border: 1px solid #444;
+            border-radius: 3px;
+            padding: 3px 8px;
+            font-size: 0.72rem;
+            color: var(--terminal-green);
+            font-weight: 700;
+        }
+        .camera-footer {
+            background: #111;
+            border: 1px solid #2a2a2a;
+            border-radius: 3px;
+            padding: 5px 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        .nav-detail-bar {
+            background: rgba(255,152,0,0.08);
+            border: 1px dashed var(--accent-orange);
+            border-radius: 3px;
+            padding: 5px 10px;
+            text-align: center;
+            color: var(--accent-orange);
+            font-weight: 700;
+            font-size: 0.75rem;
+            flex-shrink: 0;
+        }
+
+        /* ── MIDDLE COL: SENSOR DATA ── */
+        .col-sensors {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            overflow: hidden;
+        }
+
+        /* ── RIGHT COL: CONTROLS ── */
+        .col-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            overflow: hidden;
+        }
+
+        /* ── SENSOR BOX ── */
+        .sbox-grid {
+            display: grid;
+            gap: 4px;
+        }
+        .sbox-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+        .sbox-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+        .sbox-grid.cols-1 { grid-template-columns: 1fr; }
+
+        .sbox {
+            background: #0a0a0a;
+            border: 1px solid #252525;
+            border-radius: 3px;
+            padding: 5px 7px;
+            text-align: center;
+        }
+        .sbox-lbl { font-size: 0.60rem; color: #555; letter-spacing: 0.5px; margin-bottom: 2px; }
+        .sbox-val {
+            font-family: 'Roboto Mono', monospace;
+            font-weight: 700;
+            font-size: 0.82rem;
+        }
+        .c-green  { color: var(--terminal-green); }
+        .c-orange { color: var(--accent-orange); }
+        .c-cyan   { color: var(--accent-cyan); }
+        .c-red    { color: var(--accent-red); }
+        .c-purple { color: #ff00ff; }
+        .c-white  { color: #ddd; }
+        .c-gray   { color: #666; }
+
+        /* ── STATUS ROW ── */
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+            border-bottom: 1px solid #1e1e1e;
+            font-size: 0.75rem;
+        }
+        .status-row:last-child { border-bottom: none; }
+        .status-row .lbl { color: #666; }
+        .status-row .val { font-weight: 700; color: var(--terminal-green); }
+
+        /* ── LIDAR BADGE ── */
         .lidar-badge {
-            display: inline-block; padding: 3px 10px; border-radius: 3px;
-            font-family: 'Roboto Mono', monospace; font-weight: bold;
-            font-size: 0.85rem; letter-spacing: 1px;
+            display: inline-block; padding: 2px 8px; border-radius: 2px;
+            font-weight: 700; font-size: 0.72rem; letter-spacing: 1px;
         }
         .lidar-ok   { background: #003300; color: var(--terminal-green); border: 1px solid var(--terminal-green); }
         .lidar-slow { background: #332200; color: var(--accent-orange);  border: 1px solid var(--accent-orange); }
-        .lidar-stop { background: #330000; color: #ff4444;               border: 1px solid #ff4444;
-                      animation: blink 0.5s step-start infinite; }
+        .lidar-stop { background: #330000; color: #ff4444; border: 1px solid #ff4444; animation: blink .5s step-start infinite; }
         @keyframes blink { 50% { opacity: 0.3; } }
 
-        .estop-active-btn {
+        /* ── ESTOP ── */
+        .estop-btn {
+            width: 100%;
+            padding: 12px;
+            font-size: 1rem;
+            font-weight: 900;
+            font-family: 'Roboto Mono', monospace;
+            letter-spacing: 2px;
+            background: repeating-linear-gradient(45deg, #8b0000, #8b0000 10px, #a00000 10px, #a00000 20px);
+            color: #fff;
+            border: 2px solid #ff5252;
+            border-radius: 3px;
+            cursor: pointer;
+            box-shadow: 0 0 12px rgba(255,0,0,0.3);
+            flex-shrink: 0;
+            transition: box-shadow 0.2s;
+        }
+        .estop-btn:hover { box-shadow: 0 0 20px rgba(255,0,0,0.6); }
+        .estop-active {
             background: repeating-linear-gradient(45deg, #ff0000, #ff0000 10px, #cc0000 10px, #cc0000 20px) !important;
             box-shadow: 0 0 30px rgba(255,0,0,0.9) !important;
             animation: estop-pulse 0.6s ease-in-out infinite alternate;
@@ -71,293 +238,485 @@
             from { box-shadow: 0 0 15px rgba(255,0,0,0.6); }
             to   { box-shadow: 0 0 40px rgba(255,0,0,1.0); }
         }
-        .estop-bar-active {
-            background: #3a0000 !important;
-            border-color: #ff0000 !important;
-            color: #ff4444 !important;
-            animation: blink 0.5s step-start infinite;
-        }
-        .estop-bar-clear {
-            background: #001a00 !important;
-            border-color: var(--terminal-green) !important;
-            color: var(--terminal-green) !important;
-        }
 
-        /* Settings link button di navbar */
-        .btn-settings {
-            background: transparent;
-            border: 1px solid #555;
-            color: #aaa;
-            border-radius: 3px;
+        /* ── MODE BUTTONS ── */
+        .mode-row { display: flex; gap: 4px; flex-shrink: 0; }
+        .btn-mode {
+            flex: 1; padding: 8px 4px;
             font-family: 'Roboto Mono', monospace;
-            font-size: 0.75rem;
-            padding: 4px 12px;
-            text-decoration: none;
-            transition: all 0.2s;
-            letter-spacing: 0.5px;
+            font-size: 0.75rem; font-weight: 700;
+            border: 1px solid #444; border-radius: 2px;
+            cursor: pointer; background: #1a1a1a; color: #666;
+            transition: all 0.15s; letter-spacing: 1px;
         }
-        .btn-settings:hover {
-            border-color: var(--accent-orange);
-            color: var(--accent-orange);
+        .btn-mode.active-manual { background: #333; color: #ddd; border-color: #666; }
+        .btn-mode.active-auto   { background: #3a2800; color: var(--accent-orange); border-color: var(--accent-orange); }
+
+        /* ── JOYSTICK ── */
+        .joystick-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 72px);
+            grid-template-rows: repeat(3, 72px);
+            gap: 6px;
+            justify-content: center;
+        }
+        .btn-joy {
+            width: 72px;
+            height: 72px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 4px;
+            color: #bbb;
+            font-size: 1.3rem;
+            cursor: pointer;
+            transition: all 0.1s;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .btn-joy:active, .btn-joy.pressed { background: var(--accent-orange); color: #000; border-color: var(--accent-orange); }
+        .btn-joy.stop-btn { background: #2a0000; border-color: #660000; color: var(--accent-red); }
+        .btn-joy.stop-btn:active { background: var(--accent-red); color: #000; }
+
+        /* ── ESTOP STATUS BAR ── */
+        .estop-bar {
+            text-align: center; padding: 6px;
+            border-radius: 2px; font-size: 0.72rem;
+            font-weight: 700; letter-spacing: 1px;
+            flex-shrink: 0;
+        }
+        .estop-bar-clear  { background: #001a00; border: 1px solid var(--terminal-green); color: var(--terminal-green); }
+        .estop-bar-active { background: #3a0000; border: 1px solid var(--accent-red); color: var(--accent-red); animation: blink .5s step-start infinite; }
+
+        /* ── LOOP SELECTOR ── */
+        .loop-row { display: flex; gap: 4px; flex-shrink: 0; }
+        .btn-loop {
+            flex: 1; padding: 8px 4px;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.75rem; font-weight: 700;
+            border-radius: 2px; cursor: pointer;
+            transition: all 0.15s; letter-spacing: 1px;
+        }
+        .btn-loop-1 {
+            background: #0d1a2e; color: #4a90d9;
+            border: 1px solid #1e3a5f;
+        }
+        .btn-loop-1.active-loop {
+            background: #1a3a6e; color: #00d2ff;
+            border: 1px solid #00d2ff;
+            box-shadow: 0 0 8px rgba(0,210,255,0.3);
+        }
+        .btn-loop-2 {
+            background: #1a1a0d; color: #d9a24a;
+            border: 1px solid #5f4a1e;
+        }
+        .btn-loop-2.active-loop {
+            background: #3a2800; color: var(--accent-orange);
+            border: 1px solid var(--accent-orange);
+            box-shadow: 0 0 8px rgba(255,152,0,0.3);
+        }
+        .loop-indicator {
+            font-size: 0.62rem; color: #444;
+            text-align: center; padding: 2px 0;
+            letter-spacing: 1px; flex-shrink: 0;
+        }
+        .loop-indicator span { color: var(--accent-cyan); font-weight: 700; }
+
+        /* ── RECONNECT BTN ── */
+        .btn-reconnect {
+            width: 100%;
+            padding: 6px;
+            background: transparent;
+            border: 1px solid #333;
+            border-radius: 2px;
+            color: #555;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.70rem;
+            cursor: pointer;
+            transition: all 0.15s;
+            flex-shrink: 0;
+        }
+        .btn-reconnect:hover { border-color: var(--accent-orange); color: var(--accent-orange); }
+
+        /* ── SECTION DIVIDER LABEL ── */
+        .sec-lbl {
+            font-size: 0.62rem;
+            color: #3a3a3a;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            padding: 2px 0;
+            border-bottom: 1px solid #1e1e1e;
+            flex-shrink: 0;
         }
     </style>
 </head>
 <body>
-<nav class="navbar navbar-dark mb-4">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="#"><i class="fas fa-industry me-2"></i>AMR CONTROLLER</a>
-        <div class="d-flex align-items-center gap-3">
-            <a href="/settings" class="btn-settings">
-                <i class="fas fa-sliders-h me-1"></i>PARAMETERS
-            </a>
-            <span class="badge bg-danger rounded-0" id="conn-status">OFFLINE</span>
-        </div>
-    </div>
-</nav>
 
-<div class="container-fluid px-4">
-    <div class="row">
-
-        <!-- ===== LEFT COLUMN ===== -->
-        <div class="col-lg-7">
-
-            <!-- CAMERA CARD -->
-            <div class="card">
-                <div class="card-header d-flex justify-content-between">
-                    <span><i class="fas fa-camera me-2"></i>VISION SYSTEM</span>
-                    <span id="vision-data" class="status-val">NO DATA</span>
-                </div>
-                <div class="card-body p-0">
-                    <div class="video-container">
-                        <img src="/video_feed" class="video-feed"
-                             onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'100%25\' height=\'100%25\'%3E%3Crect width=\'100%25\' height=\'100%25\' fill=\'%23000\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' fill=\'%23555\' text-anchor=\'middle\' dy=\'.3em\' font-family=\'sans-serif\' font-size=\'20\'%3ECAMERA OFFLINE%3C/text%3E%3C/svg%3E'">
-                    </div>
-                </div>
-                <div class="card-footer d-flex justify-content-between align-items-center">
-                    <small>CMD: <span id="qr-cmd" style="color:var(--accent-orange); font-weight:bold;">NONE</span></small>
-                    <div class="d-flex align-items-center gap-3">
-                        <small class="text-muted">LIDAR</small>
-                        <span id="lidar-dist-val" class="status-val val-info">-- cm</span>
-                        <span id="lidar-status-badge" class="lidar-badge lidar-ok">OK</span>
-                        <small class="text-muted">rays: <span id="lidar-rays" style="color:#888">0</span></small>
-                    </div>
-                </div>
-            </div>
-
-            <!-- LIDAR SAFETY DETAIL CARD -->
-            <div class="card">
-                <div class="card-header"><i class="fas fa-shield-alt me-2"></i>SAFETY LIDAR — SICK Nano</div>
-                <div class="card-body">
-                    <div class="row g-2">
-                        <div class="col-4">
-                            <div class="sensor-box">
-                                <span>JARAK TERDEKAT</span>
-                                <div id="lidar-dist-detail" class="status-val val-info">-- cm</div>
-                            </div>
-                        </div>
-                        <div class="col-4">
-                            <div class="sensor-box">
-                                <span>ZONA PANTAU</span>
-                                <div id="lidar-zone" class="status-val val-warning">±45°</div>
-                            </div>
-                        </div>
-                        <div class="col-4">
-                            <div class="sensor-box">
-                                <span>RAY AKTIF</span>
-                                <div id="lidar-rays-detail" class="status-val" style="color:#aaa;">0</div>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="sensor-box">
-                                <span>THRESHOLD SLOW (≤1.0 m)</span>
-                                <div id="lidar-slow-status" class="status-val val-ok">CLEAR</div>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="sensor-box">
-                                <span>THRESHOLD STOP (≤0.6 m)</span>
-                                <div id="lidar-stop-status" class="status-val val-ok">CLEAR</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- TELEMETRY & SENSOR FUSION CARD -->
-            <div class="card">
-                <div class="card-header"><i class="fas fa-microchip me-2"></i>TELEMETRY & SENSOR FUSION</div>
-                <div class="card-body">
-                    <div class="row g-2 mb-3">
-                        <div class="col-md-6 d-flex justify-content-between border-bottom pb-2">
-                            <span>SYS MODE:</span>
-                            <span id="sys-mode" class="status-val text-white">--</span>
-                        </div>
-                        <div class="col-md-6 d-flex justify-content-between border-bottom pb-2">
-                            <span>NAV STATE:</span>
-                            <span id="nav-mode" class="status-val text-white">--</span>
-                        </div>
-                    </div>
-                    <div class="row g-2">
-                        <div class="col-4">
-                            <div class="sensor-box">
-                                <span>IMU YAW</span>
-                                <div id="imu-yaw" class="status-val val-warning">0.00°</div>
-                            </div>
-                        </div>
-                        <div class="col-4">
-                            <div class="sensor-box">
-                                <span>TARGET LURUS</span>
-                                <div id="target-yaw" class="status-val val-info">0.00°</div>
-                            </div>
-                        </div>
-                        <div class="col-4">
-                            <div class="sensor-box">
-                                <span>ODOMETRI (DIST)</span>
-                                <div id="dist-traveled" class="status-val" style="color:#ff00ff;">0.0 cm</div>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="sensor-box">
-                                <span>ENCODER KIRI</span>
-                                <div id="enc-l" class="status-val text-white">0.0 cm</div>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="sensor-box">
-                                <span>ENCODER KANAN</span>
-                                <div id="enc-r" class="status-val text-white">0.0 cm</div>
-                            </div>
-                        </div>
-                        <div class="col-12 mt-2">
-                            <div class="sensor-box border-secondary">
-                                <span>QR VISION OFFSET ABSOLUT (CM)</span>
-                                <div id="offset-cm" class="status-val val-info" style="font-size:1.1rem;">X: 0.0 cm | Y: 0.0 cm</div>
-                            </div>
-                        </div>
-                    </div>
-                    <span id="nav-detail">STANDBY</span>
-                    <button onclick="connectHardware()" class="btn btn-outline-warning btn-sm w-100 mt-3 rounded-0">
-                        <i class="fas fa-plug me-2"></i>RECONNECT HARDWARE
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- ===== RIGHT COLUMN (CONTROLS) ===== -->
-        <div class="col-lg-5">
-            <button id="btn-estop" onclick="toggleEstop()" class="btn estop-btn w-100 mb-2 rounded-3">
-                <i class="fas fa-exclamation-triangle me-2"></i>E-STOP
-            </button>
-
-            <div class="card">
-                <div class="card-header text-center">OPERATION MODE</div>
-                <div class="card-body p-3">
-                    <div class="btn-group w-100">
-                        <button onclick="setMode('MANUAL')" class="btn btn-secondary" id="btn-manual">MANUAL</button>
-                        <button onclick="setMode('AUTO')"   class="btn btn-outline-warning" id="btn-auto">AUTO RUN</button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-header text-center">MANUAL OVERRIDE</div>
-                <div class="card-body">
-                    <div class="joystick-grid">
-                        <div></div>
-                        <button onmousedown="sendMove('FORWARD')"  onmouseup="stopMove()" onmouseleave="stopMove()"
-                                ontouchstart="sendMove('FORWARD')" ontouchend="stopMove()"
-                                class="btn btn-control"><i class="fas fa-arrow-up"></i></button>
-                        <div></div>
-
-                        <button onmousedown="sendMove('LEFT')"  onmouseup="stopMove()" onmouseleave="stopMove()"
-                                ontouchstart="sendMove('LEFT')" ontouchend="stopMove()"
-                                class="btn btn-control"><i class="fas fa-arrow-left"></i></button>
-                        <button onclick="stopMove()" class="btn btn-danger btn-control">
-                            <i class="fas fa-stop"></i>
-                        </button>
-                        <button onmousedown="sendMove('RIGHT')"  onmouseup="stopMove()" onmouseleave="stopMove()"
-                                ontouchstart="sendMove('RIGHT')" ontouchend="stopMove()"
-                                class="btn btn-control"><i class="fas fa-arrow-right"></i></button>
-
-                        <div></div>
-                        <button onmousedown="sendMove('BACKWARD')"  onmouseup="stopMove()" onmouseleave="stopMove()"
-                                ontouchstart="sendMove('BACKWARD')" ontouchend="stopMove()"
-                                class="btn btn-control"><i class="fas fa-arrow-down"></i></button>
-                        <div></div>
-                    </div>
-
-                    <div id="estop-status-bar" class="text-center mt-3 py-2 rounded-2"
-                         style="background:#1a1a1a; border:2px solid #444; font-family:'Roboto Mono',monospace; font-weight:bold; letter-spacing:1px; font-size:0.85rem; color:#555;">
-                        <i class="fas fa-circle me-2"></i>EMERGENCY : STANDBY
-                    </div>
-                </div>
-            </div>
-
-            <!-- Quick shortcut ke Settings -->
-            <div class="card">
-                <div class="card-body p-2 text-center">
-                    <a href="/settings" style="color:#555; font-family:'Roboto Mono',monospace; font-size:0.75rem; text-decoration:none;">
-                        <i class="fas fa-sliders-h me-2"></i>Buka Parameter Settings
-                        <i class="fas fa-external-link-alt ms-2" style="font-size:0.65rem;"></i>
-                    </a>
-                </div>
-            </div>
-        </div>
+<!-- TOPBAR -->
+<div class="topbar">
+    <div class="topbar-brand"><i class="fas fa-industry" style="color:#ff9800;margin-right:8px;"></i>AMR CONTROLLER</div>
+    <div class="topbar-right">
+        <a href="/settings" class="btn-settings-link"><i class="fas fa-sliders-h me-1"></i>PARAMETERS</a>
+        <span id="conn-badge" class="conn-badge conn-offline">OFFLINE</span>
     </div>
 </div>
 
+<!-- MAIN GRID -->
+<div class="main-grid">
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- COL 1: CAMERA                           -->
+    <!-- ═══════════════════════════════════════ -->
+    <div class="col-camera">
+        <!-- Camera feed -->
+        <div class="camera-wrap">
+            <img src="/video_feed"
+                 onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'100%25\' height=\'100%25\'%3E%3Crect fill=\'%23000\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' fill=\'%23555\' text-anchor=\'middle\' dy=\'.3em\' font-family=\'sans-serif\' font-size=\'18\'%3ECAMERA OFFLINE%3C/text%3E%3C/svg%3E'">
+            <div class="camera-overlay" id="vision-data">NO DATA</div>
+        </div>
+
+        <!-- Camera footer -->
+        <div class="camera-footer">
+            <span style="color:#555;">CMD: </span>
+            <span id="qr-cmd" style="color:var(--accent-orange);font-weight:700;">NONE</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span style="color:#444;font-size:0.68rem;">LIDAR</span>
+                <span id="lidar-dist-val" class="c-cyan" style="font-weight:700;">-- cm</span>
+                <span id="lidar-badge" class="lidar-badge lidar-ok">✔ OK</span>
+                <span style="color:#444;font-size:0.65rem;">rays:<span id="lidar-rays" style="color:#666;">0</span></span>
+            </div>
+        </div>
+
+        <!-- Nav status detail -->
+        <div class="nav-detail-bar" id="nav-detail">STANDBY</div>
+    </div>
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- COL 2: SENSOR DATA                      -->
+    <!-- ═══════════════════════════════════════ -->
+    <div class="col-sensors">
+
+        <!-- SYS STATE -->
+        <div class="panel" style="flex-shrink:0;">
+            <div class="panel-hdr"><i class="fas fa-circle-dot"></i>SYSTEM STATE</div>
+            <div class="panel-body" style="gap:0;">
+                <div class="status-row">
+                    <span class="lbl">SYS MODE</span>
+                    <span class="val" id="sys-mode">--</span>
+                </div>
+                <div class="status-row">
+                    <span class="lbl">NAV STATE</span>
+                    <span class="val" id="nav-mode">--</span>
+                </div>
+                <div class="status-row">
+                    <span class="lbl">LAST CMD</span>
+                    <span class="val c-orange" id="last-cmd">--</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- LIDAR SAFETY -->
+        <div class="panel" style="flex-shrink:0;">
+            <div class="panel-hdr"><i class="fas fa-shield-alt"></i>LIDAR SAFETY</div>
+            <div class="panel-body">
+                <div class="sbox-grid cols-3">
+                    <div class="sbox">
+                        <div class="sbox-lbl">JARAK</div>
+                        <div class="sbox-val c-cyan" id="lidar-dist-detail">-- cm</div>
+                    </div>
+                    <div class="sbox">
+                        <div class="sbox-lbl">ZONA</div>
+                        <div class="sbox-val c-orange" id="lidar-zone">--</div>
+                    </div>
+                    <div class="sbox">
+                        <div class="sbox-lbl">RAYS</div>
+                        <div class="sbox-val c-gray" id="lidar-rays-detail">0</div>
+                    </div>
+                </div>
+                <div class="sbox-grid cols-2">
+                    <div class="sbox">
+                        <div class="sbox-lbl">SLOW ≤1.0m</div>
+                        <div class="sbox-val c-green" id="lidar-slow-status">CLEAR</div>
+                    </div>
+                    <div class="sbox">
+                        <div class="sbox-lbl">STOP ≤0.6m</div>
+                        <div class="sbox-val c-green" id="lidar-stop-status">CLEAR</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ODOMETRY -->
+        <div class="panel" style="flex-shrink:0;">
+            <div class="panel-hdr"><i class="fas fa-route"></i>ODOMETRY & IMU</div>
+            <div class="panel-body">
+                <div class="sbox-grid cols-3">
+                    <div class="sbox">
+                        <div class="sbox-lbl">IMU YAW</div>
+                        <div class="sbox-val c-orange" id="imu-yaw">--°</div>
+                    </div>
+                    <div class="sbox">
+                        <div class="sbox-lbl">TARGET YAW</div>
+                        <div class="sbox-val c-cyan" id="target-yaw">--°</div>
+                    </div>
+                    <div class="sbox">
+                        <div class="sbox-lbl">DIST</div>
+                        <div class="sbox-val c-purple" id="dist-traveled">-- cm</div>
+                    </div>
+                </div>
+                <div class="sbox-grid cols-2">
+                    <div class="sbox">
+                        <div class="sbox-lbl">ENC KIRI</div>
+                        <div class="sbox-val c-white" id="enc-l">-- cm</div>
+                    </div>
+                    <div class="sbox">
+                        <div class="sbox-lbl">ENC KANAN</div>
+                        <div class="sbox-val c-white" id="enc-r">-- cm</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VISION OFFSET -->
+        <div class="panel" style="flex:1; min-height:0;">
+            <div class="panel-hdr"><i class="fas fa-crosshairs"></i>VISION OFFSET</div>
+            <div class="panel-body" style="justify-content:space-evenly;">
+                <div class="sbox-grid cols-2">
+                    <div class="sbox" style="padding:10px 7px;">
+                        <div class="sbox-lbl">OFFSET X</div>
+                        <div class="sbox-val c-cyan" style="font-size:1.1rem;" id="offset-x">0.0 cm</div>
+                    </div>
+                    <div class="sbox" style="padding:10px 7px;">
+                        <div class="sbox-lbl">OFFSET Y</div>
+                        <div class="sbox-val c-cyan" style="font-size:1.1rem;" id="offset-y">0.0 cm</div>
+                    </div>
+                </div>
+                <div class="sbox-grid cols-3">
+                    <div class="sbox" style="padding:10px 7px;">
+                        <div class="sbox-lbl">ERR X px</div>
+                        <div class="sbox-val c-gray" id="err-x-px">0</div>
+                    </div>
+                    <div class="sbox" style="padding:10px 7px;">
+                        <div class="sbox-lbl">ERR Y px</div>
+                        <div class="sbox-val c-gray" id="err-y-px">0</div>
+                    </div>
+                    <div class="sbox" style="padding:10px 7px;">
+                        <div class="sbox-lbl">ANGLE</div>
+                        <div class="sbox-val c-gray" id="err-angle">0.0°</div>
+                    </div>
+                </div>
+                <!-- NAV STATUS juga masuk di sini -->
+                <div class="sbox" style="padding:10px 7px; background:rgba(255,152,0,0.06); border-color:#3a2800;">
+                    <div class="sbox-lbl" style="color:#665533;">NAV STATUS</div>
+                    <div style="color:var(--accent-orange); font-weight:700; font-size:0.75rem; font-family:'Roboto Mono',monospace;" id="nav-detail-mid">STANDBY</div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /col-sensors -->
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- COL 3: CONTROLS                         -->
+    <!-- ═══════════════════════════════════════ -->
+    <div class="col-controls">
+
+        <!-- ESTOP -->
+        <button id="btn-estop" class="estop-btn" onclick="toggleEstop()">
+            <i class="fas fa-exclamation-triangle me-2"></i>E-STOP
+        </button>
+
+        <!-- MODE -->
+        <div class="mode-row">
+            <button id="btn-manual" class="btn-mode active-manual" onclick="setMode('MANUAL')">
+                <i class="fas fa-hand-paper me-1"></i>MANUAL
+            </button>
+            <button id="btn-auto" class="btn-mode" onclick="setMode('AUTO')">
+                <i class="fas fa-robot me-1"></i>AUTO RUN
+            </button>
+        </div>
+
+        <!-- LOOP SELECTOR -->
+        <div class="panel" style="flex-shrink:0;">
+            <div class="panel-hdr"><i class="fas fa-code-branch"></i>CABANG — LOOP SELECTOR</div>
+            <div class="panel-body" style="gap:6px;">
+                <div class="loop-row">
+                    <button id="btn-loop-1" class="btn-loop btn-loop-1 active-loop"
+                            onclick="setLoop(1)">
+                        <i class="fas fa-arrow-left me-1"></i>LOOP 1<br>
+                        <span style="font-size:0.65rem;font-weight:400;">KIRI &nbsp;-90°</span>
+                    </button>
+                    <button id="btn-loop-2" class="btn-loop btn-loop-2"
+                            onclick="setLoop(2)">
+                        LOOP 2 <i class="fas fa-arrow-right ms-1"></i><br>
+                        <span style="font-size:0.65rem;font-weight:400;">KANAN +90°</span>
+                    </button>
+                </div>
+                <div class="loop-indicator">
+                    AKTIF: <span id="loop-active-label">LOOP 1 — KIRI -90°</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- JOYSTICK -->
+        <div class="panel" style="flex-shrink:0;">
+            <div class="panel-hdr"><i class="fas fa-gamepad"></i>MANUAL OVERRIDE</div>
+            <div class="panel-body" style="align-items:center; justify-content:center;">
+                <div class="joystick-grid">
+                    <div></div>
+                    <button class="btn-joy"
+                            onmousedown="sendMove('FORWARD')"  onmouseup="stopMove()" onmouseleave="stopMove()"
+                            ontouchstart="sendMove('FORWARD')" ontouchend="stopMove()">
+                        <i class="fas fa-arrow-up"></i>
+                    </button>
+                    <div></div>
+
+                    <button class="btn-joy"
+                            onmousedown="sendMove('LEFT')"  onmouseup="stopMove()" onmouseleave="stopMove()"
+                            ontouchstart="sendMove('LEFT')" ontouchend="stopMove()">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <button class="btn-joy stop-btn" onclick="stopMove()">
+                        <i class="fas fa-stop"></i>
+                    </button>
+                    <button class="btn-joy"
+                            onmousedown="sendMove('RIGHT')"  onmouseup="stopMove()" onmouseleave="stopMove()"
+                            ontouchstart="sendMove('RIGHT')" ontouchend="stopMove()">
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+
+                    <div></div>
+                    <button class="btn-joy"
+                            onmousedown="sendMove('BACKWARD')"  onmouseup="stopMove()" onmouseleave="stopMove()"
+                            ontouchstart="sendMove('BACKWARD')" ontouchend="stopMove()">
+                        <i class="fas fa-arrow-down"></i>
+                    </button>
+                    <div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- QUICK INFO — mengisi sisa ruang kosong -->
+        <div class="panel" style="flex:1; min-height:0;">
+            <div class="panel-hdr"><i class="fas fa-info-circle"></i>QUICK INFO</div>
+            <div class="panel-body" style="gap:0; justify-content:space-between;">
+                <div class="status-row">
+                    <span class="lbl">SYS MODE</span>
+                    <span class="val" id="qi-mode">--</span>
+                </div>
+                <div class="status-row">
+                    <span class="lbl">NAV STATE</span>
+                    <span class="val c-orange" id="qi-nav">--</span>
+                </div>
+                <div class="status-row">
+                    <span class="lbl">DIST</span>
+                    <span class="val c-purple" id="qi-dist">-- cm</span>
+                </div>
+                <div class="status-row">
+                    <span class="lbl">IMU YAW</span>
+                    <span class="val c-orange" id="qi-yaw">--°</span>
+                </div>
+                <div class="status-row">
+                    <span class="lbl">OFFSET X</span>
+                    <span class="val c-cyan" id="qi-ox">0.0 cm</span>
+                </div>
+                <div class="status-row">
+                    <span class="lbl">OFFSET Y</span>
+                    <span class="val c-cyan" id="qi-oy">0.0 cm</span>
+                </div>
+                <div class="status-row">
+                    <span class="lbl">ANGLE</span>
+                    <span class="val c-gray" id="qi-angle">0.0°</span>
+                </div>
+                <div class="status-row">
+                    <span class="lbl">LIDAR</span>
+                    <span id="qi-lidar" class="val c-green">-- cm ✔</span>
+                </div>
+                <div class="status-row">
+                    <span class="lbl">LAST CMD</span>
+                    <span class="val c-orange" id="qi-cmd">--</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ESTOP STATUS BAR -->
+        <div id="estop-bar" class="estop-bar estop-bar-clear">
+            <i class="fas fa-check-circle me-1"></i>EMERGENCY : NORMAL — SIAP
+        </div>
+
+        <!-- RECONNECT -->
+        <button class="btn-reconnect" onclick="connectHardware()">
+            <i class="fas fa-plug me-1"></i>RECONNECT HARDWARE
+        </button>
+
+    </div><!-- /col-controls -->
+
+</div><!-- /main-grid -->
+
 <script>
-    function connectHardware() { fetch('/api/connect', {method: 'POST'}); }
-    function toggleEstop()     { fetch('/api/estop',   {method: 'POST'}); }
-    function setMode(mode)     { fetch('/api/mode', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({mode})}); }
-    function sendMove(dir)     { fetch('/api/manual/move', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({direction: dir})}); }
-    function stopMove()        { fetch('/api/manual/stop', {method: 'POST'}); }
+    function connectHardware() { fetch('/api/connect', { method: 'POST' }); }
+
+    async function setLoop(loop) {
+        await fetch('/api/loop', {
+            method : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body   : JSON.stringify({ loop })
+        });
+        updateLoopUI(loop);
+    }
+
+    function updateLoopUI(loop) {
+        const labels = { 1: 'LOOP 1 — KIRI -90°', 2: 'LOOP 2 — KANAN +90°' };
+        document.getElementById('btn-loop-1').classList.toggle('active-loop', loop === 1);
+        document.getElementById('btn-loop-2').classList.toggle('active-loop', loop === 2);
+        document.getElementById('loop-active-label').textContent = labels[loop] || '--';
+    }
+    function toggleEstop()     { fetch('/api/estop',   { method: 'POST' }); }
+    function setMode(mode) {
+        fetch('/api/mode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }) });
+    }
+    function sendMove(dir) {
+        fetch('/api/manual/move', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ direction: dir }) });
+    }
+    function stopMove() { fetch('/api/manual/stop', { method: 'POST' }); }
 
     function updateEstop(isActive) {
         const btn = document.getElementById('btn-estop');
-        const bar = document.getElementById('estop-status-bar');
+        const bar = document.getElementById('estop-bar');
         if (isActive) {
-            btn.classList.add('estop-active-btn');
-            bar.className = 'text-center mt-3 py-2 rounded-2 estop-bar-active';
-            bar.innerHTML = '<i class="fas fa-ban me-2"></i>EMERGENCY : AKTIF — MOTOR BERHENTI';
+            btn.classList.add('estop-active');
+            bar.className = 'estop-bar estop-bar-active';
+            bar.innerHTML = '<i class="fas fa-ban me-1"></i>EMERGENCY : AKTIF — MOTOR BERHENTI';
         } else {
-            btn.classList.remove('estop-active-btn');
-            bar.className = 'text-center mt-3 py-2 rounded-2 estop-bar-clear';
-            bar.innerHTML = '<i class="fas fa-check-circle me-2"></i>EMERGENCY : NORMAL — SIAP';
+            btn.classList.remove('estop-active');
+            bar.className = 'estop-bar estop-bar-clear';
+            bar.innerHTML = '<i class="fas fa-check-circle me-1"></i>EMERGENCY : NORMAL — SIAP';
         }
     }
 
     function updateLidar(lidar) {
         if (!lidar) return;
-        const distCm = lidar.dist_cm;
-        const isStop = lidar.is_stop;
-        const isSlow = lidar.is_slow;
-        const rays   = lidar.active_rays;
-        const zone   = lidar.zone_deg;
+        const distText = lidar.dist_cm >= 999 ? '-- cm' : lidar.dist_cm.toFixed(1) + ' cm';
 
-        const distText = distCm >= 999 ? '-- cm' : distCm.toFixed(1) + ' cm';
-        document.getElementById('lidar-dist-val').innerText    = distText;
-        document.getElementById('lidar-dist-detail').innerText = distText;
-        document.getElementById('lidar-zone').innerText        = zone;
-        document.getElementById('lidar-rays').innerText        = rays;
-        document.getElementById('lidar-rays-detail').innerText = rays;
+        document.getElementById('lidar-dist-val').textContent    = distText;
+        document.getElementById('lidar-dist-detail').textContent = distText;
+        document.getElementById('lidar-zone').textContent        = lidar.zone_deg;
+        document.getElementById('lidar-rays').textContent        = lidar.active_rays;
+        document.getElementById('lidar-rays-detail').textContent = lidar.active_rays;
 
-        const badge = document.getElementById('lidar-status-badge');
-        if (isStop) {
-            badge.className = 'lidar-badge lidar-stop'; badge.innerText = '⛔ STOP';
-        } else if (isSlow) {
-            badge.className = 'lidar-badge lidar-slow'; badge.innerText = '⚠ SLOW';
+        const badge = document.getElementById('lidar-badge');
+        if (lidar.is_stop) {
+            badge.className = 'lidar-badge lidar-stop'; badge.textContent = '⛔ STOP';
+        } else if (lidar.is_slow) {
+            badge.className = 'lidar-badge lidar-slow'; badge.textContent = '⚠ SLOW';
         } else {
-            badge.className = 'lidar-badge lidar-ok';  badge.innerText = '✔ OK';
+            badge.className = 'lidar-badge lidar-ok';  badge.textContent = '✔ OK';
         }
 
         const slowEl = document.getElementById('lidar-slow-status');
-        slowEl.innerText = isSlow ? '⚠ OBSTACLE' : 'CLEAR';
-        slowEl.className = 'status-val ' + (isSlow ? 'val-warning' : 'val-ok');
+        slowEl.textContent = lidar.is_slow ? '⚠ OBSTACLE' : 'CLEAR';
+        slowEl.className   = 'sbox-val ' + (lidar.is_slow ? 'c-orange' : 'c-green');
 
         const stopEl = document.getElementById('lidar-stop-status');
-        stopEl.innerText = isStop ? '⛔ STOP!' : 'CLEAR';
-        stopEl.className = 'status-val ' + (isStop ? 'val-danger' : 'val-ok');
+        stopEl.textContent = lidar.is_stop ? '⛔ STOP!' : 'CLEAR';
+        stopEl.className   = 'sbox-val ' + (lidar.is_stop ? 'c-red' : 'c-green');
     }
 
     setInterval(async () => {
@@ -365,39 +724,76 @@
             const res  = await fetch('/api/status');
             const data = await res.json();
 
-            document.getElementById('conn-status').innerText = data.connected ? "ONLINE" : "OFFLINE";
-            document.getElementById('conn-status').className = data.connected ? "badge bg-success" : "badge bg-danger rounded-0";
-            document.getElementById('sys-mode').innerText    = data.mode;
-            document.getElementById('nav-mode').innerText    = data.nav_mode;
-            document.getElementById('nav-detail').innerText  = data.nav_status_detail;
-            document.getElementById('qr-cmd').innerText      = data.last_cmd;
+            // Conn badge
+            const badge = document.getElementById('conn-badge');
+            badge.textContent = data.connected ? 'ONLINE' : 'OFFLINE';
+            badge.className   = 'conn-badge ' + (data.connected ? 'conn-online' : 'conn-offline');
 
+            // System state
+            document.getElementById('sys-mode').textContent  = data.mode;
+            document.getElementById('nav-mode').textContent  = data.nav_mode;
+            document.getElementById('last-cmd').textContent  = data.last_cmd;
+            document.getElementById('nav-detail').textContent = data.nav_status_detail;
+            document.getElementById('nav-detail-mid').textContent = data.nav_status_detail;
+
+            // ESTOP
             updateEstop(data.estop);
+
+            // Lidar
             updateLidar(data.lidar);
 
+            // Vision
             const v = data.vision_error;
-            document.getElementById('vision-data').innerText = `PX: X:${v.x} Y:${v.y} A:${v.angle.toFixed(1)}`;
-            document.getElementById('offset-cm').innerText   = `X: ${v.x_cm} cm | Y: ${v.y_cm} cm`;
+            document.getElementById('vision-data').textContent = `PX X:${v.x} Y:${v.y} A:${v.angle.toFixed(1)}°`;
+            document.getElementById('qr-cmd').textContent      = data.last_cmd;
+            document.getElementById('offset-x').textContent   = v.x_cm + ' cm';
+            document.getElementById('offset-y').textContent   = v.y_cm + ' cm';
+            document.getElementById('err-x-px').textContent   = v.x;
+            document.getElementById('err-y-px').textContent   = v.y;
+            document.getElementById('err-angle').textContent  = v.angle.toFixed(1) + '°';
 
+            // Trackless
             if (data.trackless) {
                 const t = data.trackless;
-                document.getElementById('imu-yaw').innerText       = t.yaw.toFixed(2) + '°';
-                document.getElementById('target-yaw').innerText    = t.target_yaw.toFixed(2) + '°';
-                document.getElementById('enc-l').innerText         = t.enc_l.toFixed(1) + ' cm';
-                document.getElementById('enc-r').innerText         = t.enc_r.toFixed(1) + ' cm';
-                document.getElementById('dist-traveled').innerText = t.dist_traveled.toFixed(1) + ' cm';
+                document.getElementById('imu-yaw').textContent      = t.yaw.toFixed(2) + '°';
+                document.getElementById('target-yaw').textContent   = t.target_yaw.toFixed(2) + '°';
+                document.getElementById('enc-l').textContent        = t.enc_l.toFixed(1) + ' cm';
+                document.getElementById('enc-r').textContent        = t.enc_r.toFixed(1) + ' cm';
+                document.getElementById('dist-traveled').textContent = t.dist_traveled.toFixed(1) + ' cm';
             } else {
                 ['imu-yaw','target-yaw','enc-l','enc-r','dist-traveled'].forEach(id => {
-                    document.getElementById(id).innerText = 'OFFLINE';
+                    document.getElementById(id).textContent = 'OFFLINE';
                 });
             }
 
-            document.getElementById('btn-manual').className = data.mode === 'MANUAL'
-                ? 'btn btn-secondary active' : 'btn btn-outline-secondary';
-            document.getElementById('btn-auto').className = data.mode === 'AUTO'
-                ? 'btn btn-warning active text-dark fw-bold' : 'btn btn-outline-warning';
+            // Mode buttons
+            document.getElementById('btn-manual').className = 'btn-mode ' + (data.mode === 'MANUAL' ? 'active-manual' : '');
+            document.getElementById('btn-auto').className   = 'btn-mode ' + (data.mode === 'AUTO'   ? 'active-auto'   : '');
 
-        } catch (e) { console.error("Connection to server lost.", e); }
+            // Loop selector sync
+            if (data.selected_loop) updateLoopUI(data.selected_loop);
+
+            // Quick info panel (kolom kanan)
+            document.getElementById('qi-mode').textContent  = data.mode;
+            document.getElementById('qi-nav').textContent   = data.nav_mode;
+            document.getElementById('qi-cmd').textContent   = data.last_cmd;
+            document.getElementById('qi-ox').textContent    = v.x_cm + ' cm';
+            document.getElementById('qi-oy').textContent    = v.y_cm + ' cm';
+            document.getElementById('qi-angle').textContent = v.angle.toFixed(1) + '°';
+            if (data.trackless) {
+                document.getElementById('qi-dist').textContent = data.trackless.dist_traveled.toFixed(1) + ' cm';
+                document.getElementById('qi-yaw').textContent  = data.trackless.yaw.toFixed(2) + '°';
+            }
+            if (data.lidar) {
+                const d = data.lidar.dist_cm >= 999 ? '--' : data.lidar.dist_cm.toFixed(1);
+                const s = data.lidar.is_stop ? '⛔' : data.lidar.is_slow ? '⚠' : '✔';
+                const c = data.lidar.is_stop ? 'c-red' : data.lidar.is_slow ? 'c-orange' : 'c-green';
+                const el = document.getElementById('qi-lidar');
+                el.textContent = d + ' cm ' + s;
+                el.className = 'val ' + c;
+            }
+
+        } catch (e) { console.error('Status fetch failed', e); }
     }, 200);
 </script>
 </body>

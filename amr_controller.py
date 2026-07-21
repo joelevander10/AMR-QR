@@ -82,10 +82,17 @@ class IntegratedQRSystem(QRNavigationSystem):
             self.controller.reset_sensors_for_alignment()
             self.has_reset_sensors = True
 
-        aligned_y     = abs(ey)    <= self.deadzone_y
-        aligned_angle = abs(angle) <= self.deadzone_angle
+        # Target align: 0° untuk QR biasa, ±90° setelah rotasi CABANG
+        t_align       = self.controller.target_align_angle
+        aligned_y     = abs(ey) <= self.deadzone_y
+        # Aligned angle: error dari target_align_angle (bukan selalu 0°)
+        err_from_target = angle - t_align
+        # Wrap ke -180..+180
+        while err_from_target >  180: err_from_target -= 360
+        while err_from_target < -180: err_from_target += 360
+        aligned_angle = abs(err_from_target) <= self.deadzone_angle
 
-        # Cek apakah sudut sudah mendekati ±90° (dalam deadzone)
+        # Untuk large rotation: cek apakah sudut mendekati ±90°
         aligned_to_90 = abs(abs(angle) - 90.0) <= self.deadzone_angle
 
         CONTROL_LOOP_MODES = [
@@ -95,19 +102,14 @@ class IntegratedQRSystem(QRNavigationSystem):
         ]
 
         # 1. PRIORITAS UTAMA: Y-axis
-        if not aligned_y and self.controller.nav_mode not in CONTROL_LOOP_MODES:
-            self.alignment_start_time = 0
-            self.controller.set_nav_mode("ALIGN_Y")
-            self.controller.set_nav_status_detail(f"ALIGN M/M: {ey}px")
-            return
+        # ALIGN_Y dinonaktifkan — offset Y dikompensasi ke jarak tempuh dinamis
+        # sehingga AMR tidak perlu berhenti tepat di center QR arah maju/mundur
 
-        # 2. PRIORITAS KEDUA: sudut ekstrem (>30°)
-        #    Harus align ke ±90° dulu sebelum start_large_rotation
-        if abs(angle) > 30.0 and self.controller.nav_mode not in CONTROL_LOOP_MODES:
+        # 2. PRIORITAS KEDUA: sudut ekstrem (>30°) — hanya untuk QR non-CABANG
+        #    (CABANG pakai target_align_angle, bukan large rotation)
+        if abs(angle) > 30.0 and abs(t_align) < 1.0 and self.controller.nav_mode not in CONTROL_LOOP_MODES:
             self.alignment_start_time = 0
-
             if not aligned_to_90:
-                # Belum mendekati ±90°, align dulu
                 target_90 = 90.0 if angle > 0 else -90.0
                 err_to_90 = angle - target_90
                 self.controller.set_nav_mode("ALIGN_TO_90")
@@ -115,7 +117,6 @@ class IntegratedQRSystem(QRNavigationSystem):
                     f"ALIGN KE {'90°' if angle > 0 else '-90°'}: "
                     f"sudut={angle:.1f}° | err={err_to_90:.1f}°")
             else:
-                # Sudah di ±90°, eksekusi rotasi besar
                 self.controller.start_large_rotation(angle)
             return
 
@@ -123,14 +124,15 @@ class IntegratedQRSystem(QRNavigationSystem):
         if self.controller.nav_mode in ["ALIGN_LARGE_ROTATION", "POST_ROT_CREEP", "ALIGN_TO_90"]:
             return
 
-        # 3. PRIORITAS KETIGA: sudut kecil (<30°) → pulse halus
+        # 3. PRIORITAS KETIGA: align ke target_align_angle (0° atau ±90°)
         if not aligned_angle and self.controller.nav_mode not in CONTROL_LOOP_MODES:
             self.alignment_start_time = 0
             if self._osc_was_aligned:
                 self._osc_was_aligned = False
             self.controller.set_nav_mode("ALIGN_ROTATION")
             self.controller.set_nav_status_detail(
-                f"ALIGN SUDUT: {angle:.1f}° | osc:{self._osc_count}/{self.OSCILLATION_MAX}")
+                f"ALIGN SUDUT: {angle:.1f}° → target {t_align:+.0f}° "
+                f"| err={err_from_target:.1f}° | osc:{self._osc_count}/{self.OSCILLATION_MAX}")
             return
 
         # 4. Sudut masuk deadzone
@@ -306,6 +308,17 @@ class AMRController:
         self.HARD_STOP_CM    = 148.0   # berhenti paksa jika QR tidak terbaca
 
         # =======================================================
+        # KOREKSI JARAK DINAMIS BERDASARKAN OFFSET Y
+        # Tidak perlu align Y — offset Y dikompensasi ke jarak tempuh
+        # _dyn_* = nilai aktual per sesi EXECUTE_MOVE (dihitung ulang tiap start)
+        # =======================================================
+        self.USE_Y_OFFSET_CORRECTION = True   # aktifkan fitur ini
+        self.Y_OFFSET_CORRECTION_MAX = 20.0   # batas koreksi maks ±20cm
+        self._dyn_decel_start  = self.DECEL_START_CM
+        self._dyn_creep_start  = self.CREEP_START_CM
+        self._dyn_hard_stop    = self.HARD_STOP_CM
+
+        # =======================================================
         # PARAMETER GAIN PID
         # =======================================================
         self.KP_IMU = 0.22
@@ -320,6 +333,13 @@ class AMRController:
         self.ALIGN_MOVE_DURATION = 0.3
         self.ALIGN_STOP_DURATION = 1.0
 
+        # --- Kick-start untuk overcome static friction ---
+        # Hanya aktif saat error BESAR (> ALIGN_KICK_THRESHOLD)
+        # agar tidak overshoot saat error sudah kecil
+        self.V_ALIGN_KICK         = 0.6 * self.V_SCALE  # voltase sentak awal
+        self.ALIGN_KICK_DUR       = 0.08                 # durasi sentak (80ms)
+        self.ALIGN_KICK_THRESHOLD = 3.0                  # derajat/pixel — batas pakai kick
+
         # --- State mesin ---
         self.connected         = False
         self.estop_active      = False
@@ -331,6 +351,7 @@ class AMRController:
 
         self.current_cmd           = "NONE"
         self.current_val           = "0"
+        self.current_goal          = ""     # nama goal terakhir yang tercapai
         self.current_direction     = None
         self.brake_released_manual = False
 
@@ -374,6 +395,13 @@ class AMRController:
         self.goal_pending = False
         self.ignore_goal  = False
         self.return_home  = False
+
+        # --- LOOP SELECTOR (untuk QR CABANG) ---
+        # selected_loop: 1 = belok kiri (-90°), 2 = belok kanan (+90°)
+        # target_align_angle: sudut alignment setelah rotasi (0° normal, ±90° setelah cabang)
+        self.selected_loop        = 1
+        self.target_align_angle   = 0.0
+        self._cabang_rotated      = False   # flag: sudah rotasi, sekarang fase align+maju
 
         # --- CSV log ---
         self.csv_file      = "amr_diagnostic_log.csv"
@@ -589,6 +617,7 @@ class AMRController:
                 self.return_home  = False
                 self.mode         = "MANUAL"
                 self.nav_mode     = "GOAL_REACHED"
+                self.current_goal = "HOMEPOST"
                 self.set_nav_status_detail("✓ HOMEPOST TERCAPAI! Tekan START AUTO untuk lanjut.")
                 return
             else:
@@ -604,8 +633,52 @@ class AMRController:
                 self.mode         = "MANUAL"
                 self.nav_mode     = "GOAL_REACHED"
                 self.goal_pending = False
-                self.set_nav_status_detail("✓ GOAL TERCAPAI! Tekan START AUTO untuk lanjut.")
+                # Simpan nama goal lengkap (misal "GOAL 3", "GOAL:7", dll)
+                goal_name = cmd.strip()
+                if val and val != "0":
+                    goal_name = f"{cmd} {val}"
+                self.current_goal = goal_name
+                self.set_nav_status_detail(
+                    f"✓ {goal_name} TERCAPAI! Tekan START AUTO untuk lanjut.")
                 return
+
+        # QR CABANG — belok berdasarkan selected_loop
+        # Fase 1: belum rotasi → eksekusi rotasi dulu
+        # Fase 2: sudah rotasi → align ke ±90° lalu MAJU
+        if "CABANG" in cmd.upper():
+            if not self._cabang_rotated:
+                # Fase 1: tentukan arah berdasarkan loop
+                move_angle = -90.0 if self.selected_loop == 1 else 90.0
+                self.target_align_angle = move_angle   # simpan untuk align setelah rotasi
+                self._cabang_rotated    = True
+                if self.trackless:
+                    initial_yaw         = self.trackless.get_yaw()
+                    self.target_yaw_abs = (initial_yaw + move_angle + 180) % 360 - 180
+                    self.target_yaw     = self.target_yaw_abs
+                self.nav_mode = "EXECUTE_ROTATION_90"
+                self.set_nav_status_detail(
+                    f"CABANG LOOP {self.selected_loop}: PUTAR {move_angle:+.0f}° → align → MAJU")
+            else:
+                # Fase 2: sudah rotasi, sekarang MAJU biasa
+                # target_align_angle sudah di-set, dipakai control_logic untuk align ke ±90°
+                self._cabang_rotated  = False
+                self.target_align_angle = 0.0   # reset setelah maju
+                if self.trackless:
+                    time.sleep(0.05)
+                    self.start_dist_l = self.trackless.dist_l
+                    self.start_dist_r = self.trackless.dist_r
+                    self.start_yaw    = self.trackless.get_yaw()
+                    offset_x_mm = self.vision_error.get('x_mm', 0.0)
+                    if self.REVERSE_CAMERA_X: offset_x_mm = -offset_x_mm
+                    self.scurve_offset_cm = (-offset_x_mm / 10.0) * 0.80
+                    self.target_yaw = 0.0
+                self.dist_traveled    = 0.0
+                self.prev_err_imu     = 0.0
+                self.integral_err_imu = 0.0
+                self.nav_mode         = "EXECUTE_MOVE"
+                self.set_nav_status_detail(
+                    f"CABANG LOOP {self.selected_loop}: MAJU setelah align ±90°")
+            return
 
         if "PUTAR" in cmd.upper() and self.trackless:
             initial_yaw         = self.trackless.get_yaw()
@@ -625,6 +698,33 @@ class AMRController:
                 if self.REVERSE_CAMERA_X: offset_x_mm = -offset_x_mm
                 self.scurve_offset_cm = (-offset_x_mm / 10.0) * 0.80
                 self.target_yaw = 0.0
+
+                # ===================================================
+                # KOREKSI JARAK DINAMIS DARI OFFSET Y
+                # offset_y_mm > 0 = AMR terlalu maju → jarak lebih pendek
+                # offset_y_mm < 0 = AMR terlalu mundur → jarak lebih panjang
+                # ===================================================
+                if self.USE_Y_OFFSET_CORRECTION:
+                    offset_y_mm  = self.vision_error.get('y_mm', 0.0)
+                    offset_y_cm  = offset_y_mm / 10.0
+                    # Clamp koreksi agar tidak ekstrem
+                    offset_y_cm  = max(-self.Y_OFFSET_CORRECTION_MAX,
+                                       min(self.Y_OFFSET_CORRECTION_MAX, offset_y_cm))
+                    # Jarak efektif ke QR berikutnya
+                    eff_dist     = self.TARGET_X_DIST_CM - offset_y_cm
+                    eff_dist     = max(50.0, eff_dist)  # minimal 50cm
+                    # Hitung ulang semua threshold proporsional
+                    ratio = eff_dist / self.TARGET_X_DIST_CM
+                    self._dyn_decel_start = self.DECEL_START_CM  * ratio
+                    self._dyn_creep_start = self.CREEP_START_CM  * ratio
+                    self._dyn_hard_stop   = self.HARD_STOP_CM    * ratio
+                    self.set_nav_status_detail(
+                        f"MAJU: target={eff_dist:.1f}cm "
+                        f"(koreksi Y={offset_y_cm:+.1f}cm)")
+                else:
+                    self._dyn_decel_start = self.DECEL_START_CM
+                    self._dyn_creep_start = self.CREEP_START_CM
+                    self._dyn_hard_stop   = self.HARD_STOP_CM
 
                 try:
                     with open(self.csv_file, 'w') as f:
@@ -674,8 +774,10 @@ class AMRController:
                 # --- DI2: Tombol STOP AUTO / kembali MANUAL (rising-edge) ---
                 btn_stop = self.digital.read_input(self.PIN_STOP_AUTO)
                 if btn_stop and not self._btn_stop_prev:
-                    self.return_home = False
-                    self.mode        = "MANUAL"
+                    self.return_home        = False
+                    self.mode               = "MANUAL"
+                    self.target_align_angle = 0.0
+                    self._cabang_rotated    = False
                     self.stop_motor()
                     self.set_nav_status_detail("MODE MANUAL aktif (Tombol DI2)")
                     print("[DI2] STOP AUTO ditekan → MODE MANUAL")
@@ -713,7 +815,9 @@ class AMRController:
         # -- GOAL_REACHED ------------------------------------------
         if self.nav_mode == "GOAL_REACHED":
             self.stop_motor()
-            self.set_nav_status_detail("✓ GOAL TERCAPAI! Tekan START AUTO untuk lanjut.")
+            goal_label = self.current_goal if self.current_goal else "GOAL"
+            self.set_nav_status_detail(
+                f"✓ {goal_label} TERCAPAI! Tekan START AUTO untuk lanjut.")
             return
 
         # -- ALIGN_LARGE_ROTATION ----------------------------------
@@ -802,7 +906,13 @@ class AMRController:
                     self.align_pulse_timer = current_t
                     self.set_motor(0, 0)
                 else:
-                    out = math.copysign(self.V_ALIGN, err_to_90)
+                    # Kick-start hanya jika error ke ±90° masih besar
+                    use_kick = abs(err_to_90) > self.ALIGN_KICK_THRESHOLD
+                    if use_kick and elapsed < self.ALIGN_KICK_DUR:
+                        spd = self.V_ALIGN_KICK
+                    else:
+                        spd = self.V_ALIGN
+                    out = math.copysign(spd, err_to_90)
                     self.set_motor(out, -out)
                 return
             elif self.align_pulse_state == "STOP":
@@ -869,7 +979,7 @@ class AMRController:
                 f"| {'KANAN' if self.QR_SEARCH_ROT_DIR > 0 else 'KIRI'} | 0.3V")
             return
 
-        # -- ALIGN_ROTATION & ALIGN_Y (pulse proporsional) --------
+        # -- ALIGN_ROTATION & ALIGN_Y (pulse + kick-start) --------
         if self.nav_mode in ["ALIGN_ROTATION", "ALIGN_Y"]:
             current_t = time.time()
             if self.align_pulse_timer == 0.0:
@@ -884,19 +994,35 @@ class AMRController:
                     self.set_motor(0, 0)
                 else:
                     if self.nav_mode == "ALIGN_ROTATION":
-                        out = math.copysign(self.V_ALIGN, err_a)
+                        # Error dari target_align_angle (bukan selalu 0°)
+                        err_to_target = err_a - self.target_align_angle
+                        while err_to_target >  180: err_to_target -= 360
+                        while err_to_target < -180: err_to_target += 360
+
+                        # Kick-start: sentak awal hanya jika error masih besar
+                        # Error kecil (≤ threshold) → langsung pelan, tidak overshoot
+                        use_kick = abs(err_to_target) > self.ALIGN_KICK_THRESHOLD
+                        if use_kick and elapsed < self.ALIGN_KICK_DUR:
+                            spd = self.V_ALIGN_KICK
+                        else:
+                            spd = self.V_ALIGN
+                        out = math.copysign(spd, err_to_target)
                         self.set_motor(out, -out)
+                        self.set_nav_status_detail(
+                            f"ALIGN ROT: err={err_to_target:.1f}° "
+                            f"| {'KICK' if use_kick and elapsed < self.ALIGN_KICK_DUR else 'SLOW'} "
+                            f"{spd/self.V_SCALE:.1f}V")
+
                     elif self.nav_mode == "ALIGN_Y":
-                        # ==================================================
-                        # ALIGN_Y PROPORSIONAL:
-                        # Jauh (|ey| > ALIGN_Y_FAST_ZONE) → V_ALIGN_Y_FAST
-                        # Sedang                           → interpolasi linear
-                        # Dekat (|ey| <= deadzone_y)       → V_ALIGN (pelan)
-                        # ==================================================
                         deadzone_y = self.qr_sys.deadzone_y if self.qr_sys else 25
                         abs_ey     = abs(err_y)
 
-                        if abs_ey >= self.ALIGN_Y_FAST_ZONE:
+                        # Kick-start untuk ALIGN_Y: hanya jika error pixel besar
+                        use_kick_y = abs_ey > self.ALIGN_KICK_THRESHOLD
+                        if use_kick_y and elapsed < self.ALIGN_KICK_DUR:
+                            # Fase kick — voltase tinggi sesaat
+                            spd_y = self.V_ALIGN_KICK
+                        elif abs_ey >= self.ALIGN_Y_FAST_ZONE:
                             spd_y = self.V_ALIGN_Y_FAST
                         elif abs_ey <= deadzone_y:
                             spd_y = self.V_ALIGN
@@ -908,7 +1034,9 @@ class AMRController:
                         out = math.copysign(spd_y, err_y)
                         self.set_motor(out, out)
                         self.set_nav_status_detail(
-                            f"ALIGN Y: {err_y}px | spd={spd_y/self.V_SCALE:.2f}V")
+                            f"ALIGN Y: {err_y}px "
+                            f"| {'KICK' if use_kick_y and elapsed < self.ALIGN_KICK_DUR else 'SLOW'} "
+                            f"{spd_y/self.V_SCALE:.2f}V")
                 return
 
             elif self.align_pulse_state == "STOP":
@@ -928,7 +1056,23 @@ class AMRController:
                 self.stop_motor()
                 time.sleep(1.0)
                 self.reset_vision_system()
-                self.nav_mode = "EXECUTE_MOVE"
+                if self._cabang_rotated:
+                    # QR CABANG: balik ke IDLE dulu agar vision align ke ±90° sebelum MAJU
+                    self.nav_mode = "IDLE"
+                    self.set_nav_status_detail(
+                        f"ROTASI CABANG SELESAI → align ke "
+                        f"{self.target_align_angle:+.0f}° lalu MAJU")
+                else:
+                    # QR PUTAR biasa: langsung EXECUTE_MOVE
+                    self.nav_mode = "EXECUTE_MOVE"
+                    self.dist_traveled    = 0.0
+                    self.prev_err_imu     = 0.0
+                    self.integral_err_imu = 0.0
+                    if self.trackless:
+                        self.start_dist_l = self.trackless.dist_l
+                        self.start_dist_r = self.trackless.dist_r
+                        self.start_yaw    = self.trackless.get_yaw()
+                    self.set_nav_status_detail("ROTASI SELESAI → EXECUTE_MOVE")
             else:
                 out = max(-25.0, min(25.0, diff_imu * 0.8))
                 if abs(diff_imu) < 10: out = max(-10.0, min(10.0, out))
@@ -937,19 +1081,20 @@ class AMRController:
         # -- EXECUTE_MOVE (S-Curve PID + smooth deceleration) ------
         elif self.nav_mode == "EXECUTE_MOVE":
 
-            # Berhenti paksa jika QR tidak terbaca sampai HARD_STOP_CM
-            if self.dist_traveled >= self.HARD_STOP_CM:
+            # Berhenti paksa jika QR tidak terbaca sampai _dyn_hard_stop
+            if self.dist_traveled >= self._dyn_hard_stop:
                 self.stop_motor()
                 self.set_nav_status_detail(
-                    f"BERHENTI PAKSA (QR tidak terbaca) | Dist: {self.dist_traveled:.1f}cm")
+                    f"BERHENTI PAKSA (QR tidak terbaca) | Dist: {self.dist_traveled:.1f}cm "
+                    f"| hard_stop={self._dyn_hard_stop:.1f}cm")
                 self.reset_vision_system()
                 return
 
             # -------------------------------------------------------
-            # CREEP ZONE: dist >= CREEP_START_CM
+            # CREEP ZONE: dist >= _dyn_creep_start
             # Kecepatan sudah sangat rendah, scan QR untuk berhenti
             # -------------------------------------------------------
-            if self.dist_traveled >= self.CREEP_START_CM:
+            if self.dist_traveled >= self._dyn_creep_start:
                 if qr_sight:
                     self.stop_motor()
                     self.set_nav_status_detail(
@@ -960,7 +1105,8 @@ class AMRController:
                     self.stop_motor(); return
                 self.set_motor(self.CREEP_SPEED, self.CREEP_SPEED)
                 self.set_nav_status_detail(
-                    f"CREEP SCAN QR | Dist: {self.dist_traveled:.1f}cm")
+                    f"CREEP SCAN QR | Dist: {self.dist_traveled:.1f}cm "
+                    f"/ {self._dyn_creep_start:.1f}cm")
                 return
 
             # -------------------------------------------------------
@@ -968,11 +1114,11 @@ class AMRController:
             #
             # Fase 1 — AKSELERASI  : 0 ~ ACCEL_DIST_CM
             #           ramp dari V_STALL ke V_CRUISE
-            # Fase 2 — CRUISE      : ACCEL_DIST_CM ~ DECEL_START_CM
+            # Fase 2 — CRUISE      : ACCEL_DIST_CM ~ _dyn_decel_start
             #           tetap V_CRUISE
-            # Fase 3 — DESELERASI  : DECEL_START_CM ~ CREEP_START_CM
-            #           turun linear dari V_CRUISE ke CREEP_SPEED
-            # Fase 4 — CREEP       : CREEP_START_CM ~ HARD_STOP_CM
+            # Fase 3 — DESELERASI  : _dyn_decel_start ~ _dyn_creep_start
+            #           turun smooth ease-out dari V_CRUISE ke CREEP_SPEED
+            # Fase 4 — CREEP       : _dyn_creep_start ~ _dyn_hard_stop
             #           (ditangani blok di atas)
             # -------------------------------------------------------
             if self.dist_traveled < self.ACCEL_DIST_CM:
@@ -980,16 +1126,15 @@ class AMRController:
                 ramp         = self.dist_traveled / self.ACCEL_DIST_CM
                 target_speed = self.V_STALL + (self.V_CRUISE - self.V_STALL) * ramp
 
-            elif self.dist_traveled < self.DECEL_START_CM:
+            elif self.dist_traveled < self._dyn_decel_start:
                 # Fase 2: cruise
                 target_speed = self.V_CRUISE
 
             else:
-                # Fase 3: deselerasi smooth linear
-                decel_range  = self.CREEP_START_CM - self.DECEL_START_CM
-                decel_done   = self.dist_traveled - self.DECEL_START_CM
+                # Fase 3: deselerasi smooth ease-out
+                decel_range  = self._dyn_creep_start - self._dyn_decel_start
+                decel_done   = self.dist_traveled - self._dyn_decel_start
                 t_decel      = max(0.0, min(1.0, decel_done / decel_range))
-                # Gunakan ease-out (kuadratik) agar lebih smooth
                 t_smooth     = 1.0 - (1.0 - t_decel) ** 2
                 target_speed = self.V_CRUISE + t_smooth * (self.CREEP_SPEED - self.V_CRUISE)
                 target_speed = max(self.CREEP_SPEED, target_speed)
@@ -1081,8 +1226,10 @@ class AMRController:
             self.reset_vision_system()
             self.set_nav_status_detail("🏠 RETURN HOME aktif — cari HOMEPOST...")
         elif p in ["STOP_AUTO", "STOP", "SPACE"]:
-            self.return_home = False
-            self.mode        = "MANUAL"
+            self.return_home        = False
+            self.mode               = "MANUAL"
+            self.target_align_angle = 0.0
+            self._cabang_rotated    = False
             self.stop_motor()
         elif p in ["W", "A", "S", "D"]:
             self.return_home = False
